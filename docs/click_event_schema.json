@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Click event",
+  "description": "Schema cho một lượt click đã được ẩn danh, dùng giữa bảng clicks và pipeline analytics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "short_code",
+    "timestamp",
+    "ip_hash",
+    "country",
+    "device",
+    "browser",
+    "referrer",
+    "user_agent"
+  ],
+  "properties": {
+    "short_code": {
+      "type": "string",
+      "description": "Mã rút gọn của liên kết được click.",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "Thời điểm click theo ISO 8601 UTC, kết thúc bằng Z.",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "examples": [
+        "2026-10-22T08:15:30Z"
+      ]
+    },
+    "ip_hash": {
+      "type": "string",
+      "description": "SHA-256 dạng hex của IP kết hợp salt; không được chứa IP gốc.",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "country": {
+      "type": "string",
+      "description": "Mã quốc gia ISO 3166-1 alpha-2 viết hoa; dùng XX nếu không xác định được.",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "device": {
+      "type": "string",
+      "description": "Nhóm thiết bị suy ra từ User-Agent.",
+      "enum": [
+        "desktop",
+        "mobile",
+        "tablet",
+        "bot",
+        "other"
+      ]
+    },
+    "browser": {
+      "type": "string",
+      "description": "Tên trình duyệt suy ra từ User-Agent.",
+      "minLength": 1
+    },
+    "referrer": {
+      "type": "string",
+      "description": "Domain nguồn giới thiệu hoặc direct nếu không có nguồn giới thiệu.",
+      "minLength": 1
+    },
+    "user_agent": {
+      "type": "string",
+      "description": "User-Agent gốc, giới hạn tối đa 512 ký tự để tránh lưu dữ liệu quá dài.",
+      "maxLength": 512
+    }
+  },
+  "examples": [
+    {
+      "short_code": "aB3xK9z",
+      "timestamp": "2026-10-22T08:15:30Z",
+      "ip_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "country": "VN",
+      "device": "mobile",
+      "browser": "Chrome",
+      "referrer": "facebook.com",
+      "user_agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/129.0.0.0 Mobile Safari/537.36"
+    }
+  ]
+}
