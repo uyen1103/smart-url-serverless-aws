@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#4F46E5">
+    <title>LinkPulse — Rút gọn liên kết</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./css/tokens.css">
+    <link rel="stylesheet" href="./css/style.css">
+    <script src="./js/config.js" defer></script>
+    <script src="./js/mock.js" defer></script>
+    <script src="./js/app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./index.html" aria-label="LinkPulse, trang chủ">
+        <span class="brand-mark" aria-hidden="true">L</span>
+        <span>LinkPulse</span>
+      </a>
+      <span class="header-note">Liên kết gọn, thống kê rõ ràng</span>
+    </header>
+
+    <main class="page-shell">
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">SMART URL SHORTENER</p>
+        <h1 id="page-title">Rút gọn liên kết</h1>
+        <p class="intro-copy">Tạo liên kết ngắn gọn và theo dõi lượt truy cập của bạn.</p>
+      </section>
+
+      <section class="card" aria-label="Tạo liên kết ngắn">
+        <form id="shorten-form" novalidate>
+          <div class="field">
+            <label for="url">URL đích <span class="required-mark" aria-hidden="true">*</span></label>
+            <input id="url" name="url" type="url" inputmode="url" autocomplete="url"
+              placeholder="https://example.com/duong-dan" maxlength="2048" required
+              aria-describedby="url-hint url-error">
+            <p class="field-hint" id="url-hint">Chỉ hỗ trợ http:// hoặc https://, tối đa 2048 ký tự.</p>
+            <p class="field-error" id="url-error" aria-live="polite"></p>
+          </div>
+
+          <div class="field">
+            <label for="alias">Alias tùy chọn</label>
+            <div class="alias-input">
+              <span class="alias-prefix" aria-hidden="true">linkpulse.vn/</span>
+              <input id="alias" name="alias" type="text" autocomplete="off"
+                placeholder="ten-goi-nho" maxlength="30" aria-describedby="alias-hint alias-error">
+            </div>
+            <p class="field-hint" id="alias-hint">3–30 ký tự: chữ, số hoặc dấu gạch ngang.</p>
+            <p class="field-error" id="alias-error" aria-live="polite"></p>
+          </div>
+
+          <div class="options-grid">
+            <div class="field">
+              <label for="expires-in">Thời hạn</label>
+              <select id="expires-in" name="expires_in">
+                <option value="">Không giới hạn</option>
+                <option value="3600">1 giờ</option>
+                <option value="86400">24 giờ</option>
+                <option value="604800">7 ngày</option>
+              </select>
+              <p class="field-hint">Gửi thời hạn dưới dạng giây.</p>
+            </div>
+            <div class="field">
+              <label for="max-clicks">Số click tối đa</label>
+              <input id="max-clicks" name="max_clicks" type="number" min="1" step="1"
+                inputmode="numeric" placeholder="Không giới hạn" aria-describedby="clicks-error">
+              <p class="field-hint">Để trống nếu không giới hạn.</p>
+              <p class="field-error" id="clicks-error" aria-live="polite"></p>
+            </div>
+          </div>
+
+          <div id="form-message" class="message" role="status" aria-live="polite" hidden></div>
+          <button id="retry-button" class="button button-secondary retry-button" type="button" hidden>Thử lại</button>
+          <button id="submit-button" class="button button-primary" type="submit">
+            <span>Rút gọn liên kết</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </form>
+      </section>
+
+      <section id="result-card" class="card result-card" aria-labelledby="result-title" hidden>
+        <div class="result-heading">
+          <span class="success-icon" aria-hidden="true">✓</span>
+          <div>
+            <h2 id="result-title">Liên kết của bạn đã sẵn sàng</h2>
+            <p id="result-note" class="field-hint"></p>
+          </div>
+        </div>
+        <div class="result-row">
+          <p id="short-url" class="short-url"></p>
+          <button id="copy-button" class="button button-secondary" type="button">Sao chép</button>
+        </div>
+        <p id="copy-feedback" class="copy-feedback" aria-live="polite"></p>
+      </section>
+      <p class="demo-note">Bản prototype dùng dữ liệu giả; không tạo liên kết thật.</p>
+    </main>
+  </body>
+</html>

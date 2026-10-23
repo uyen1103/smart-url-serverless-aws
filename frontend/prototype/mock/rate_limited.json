@@ -1,0 +1,8 @@
+{
+  "status": 429,
+  "retryAfter": 42,
+  "error": {
+    "code": "rate_limited",
+    "message": "Bạn thao tác quá nhanh."
+  }
+}

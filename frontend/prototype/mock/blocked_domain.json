@@ -1,0 +1,7 @@
+{
+  "status": 400,
+  "error": {
+    "code": "blocked_domain",
+    "message": "Domain này đang bị chặn."
+  }
+}
