@@ -1,0 +1,837 @@
+openapi: 3.0.3
+info:
+  title: LinkPulse API
+  version: 1.0.0
+  contact:
+    name: TV1 – Backend Core
+  description: |
+    API rút gọn link chạy serverless trên AWS (API Gateway HTTP API + Lambda + DynamoDB).
+
+    Đặc tả do TV1 (Backend Core) soạn trong tuần 1, đã đối chiếu với:
+    - `frontend/prototype/` và `docs/frontend_research.md`, `docs/gui_wireframe.md` (TV2)
+    - `docs/click_event_schema.json` và `analytics/prototype/aggregate.py` (TV4)
+
+    **Quy ước chung**
+    - Frontend gọi API qua CloudFront theo đường dẫn tương đối `/api/...`
+      (ví dụ `POST /api/shorten`). Link rút gọn nằm ở gốc domain: `GET /{code}`.
+    - Mọi lỗi (trừ redirect 302) có dạng `{"error": {"code": "...", "message": "...", "reason": "..."}}`.
+      Frontend dựa vào `error.code`; `message` và `reason` là tùy chọn, để debug.
+    - Thời gian dùng ISO 8601 UTC, kết thúc bằng `Z` (ví dụ `2026-10-23T08:30:00Z`).
+    - Trong API dùng tên trường `code` cho mã rút gọn; trong DynamoDB và click event
+      cùng giá trị đó tên là `short_code`.
+    - Redirect dùng **HTTP 302** (không dùng 301) để mỗi lượt truy cập đều qua server và đếm được click.
+
+    **Chủ sở hữu link (chưa có tài khoản).** Frontend tạo một UUID lưu ở trình duyệt và gửi trong header
+    `X-Owner-Id`. Đây chỉ là định danh theo trình duyệt, **không phải cơ chế xác thực**: ai biết UUID đều
+    thao tác được với link của UUID đó. Các chức năng quản trị (chặn/gỡ chặn link) cần xác thực thật và
+    **chưa nằm trong bản spec này** (phần của TV5).
+
+    **Các điểm cần thống nhất với nhóm** (xác thực quản trị, cách hiển thị trang lỗi, quyền xem thống kê...) được liệt kê ở mục 7 của `docs/backend_research.md`.
+
+servers:
+  - url: https://linkpulse.vn/api
+    description: |
+      API. Thay `linkpulse.vn` bằng domain thật, hoặc domain `*.cloudfront.net` khi demo.
+      Behavior `/api/*` của CloudFront trỏ vào API Gateway.
+
+tags:
+  - name: Links
+    description: Tạo, truy cập, liệt kê và xóa link rút gọn
+  - name: Stats
+    description: Thống kê lượt truy cập
+
+paths:
+  /shorten:
+    post:
+      tags: [Links]
+      operationId: shortenUrl
+      summary: Tạo link rút gọn
+      description: |
+        Nhận một URL dài và trả về mã rút gọn (7 ký tự Base62, hoặc alias người dùng chọn).
+
+        - Gửi kèm `X-Owner-Id` để link thuộc về trình duyệt đó (cần cho "Link của tôi" và xóa link).
+        - **URL đã rút gọn trước đó:** nếu không đặt `alias` và cùng chủ sở hữu đã có link còn hiệu lực
+          cho đúng URL này, API trả lại link cũ với **HTTP 200** và `created: false`
+          (không tạo bản trùng, giữ nguyên số click).
+        - Giới hạn tốc độ hiện hiển thị trên giao diện là 10 link/phút/IP (vượt thì 429).
+        - `turnstile_token` do widget Cloudflare Turnstile sinh ra; backend phải xác minh token.
+      security:
+        - {}
+        - ownerId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShortenRequest'
+            examples:
+              basic:
+                summary: Chỉ gửi URL
+                value:
+                  url: https://example.com/bai-viet-rat-dai?id=123
+                  turnstile_token: 0.abc123-token-tu-turnstile
+              withOptions:
+                summary: Có alias, thời hạn 7 ngày và giới hạn click
+                value:
+                  url: https://example.com/khuyen-mai
+                  alias: khuyen-mai
+                  expires_in: 604800
+                  max_clicks: 100
+                  turnstile_token: 0.abc123-token-tu-turnstile
+      responses:
+        '201':
+          description: Tạo link mới thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShortenResponse'
+              example:
+                code: aB3kLm9
+                short_url: https://linkpulse.vn/aB3kLm9
+                created: true
+                long_url: https://example.com/bai-viet-rat-dai?id=123
+                expires_at: '2026-10-30T08:30:00Z'
+                max_clicks: null
+        '200':
+          description: URL này đã được rút gọn trước đó bởi cùng chủ sở hữu; trả lại link cũ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShortenResponse'
+              example:
+                code: aB3kLm9
+                short_url: https://linkpulse.vn/aB3kLm9
+                created: false
+                long_url: https://example.com/bai-viet-rat-dai?id=123
+                expires_at: null
+                max_clicks: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/AliasTaken'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /stats:
+    get:
+      tags: [Stats]
+      operationId: getGlobalStats
+      summary: Thống kê toàn hệ thống (dashboard)
+      description: |
+        Dùng cho trang dashboard, frontend gọi định kỳ (polling) mỗi 5 giây.
+        Cùng cấu trúc với `GET /stats/{code}`, nhưng có thêm `top_links` và `flagged_links`
+        và không có `link`.
+
+        **Quy ước giá trị** (theo `click_event_schema.json` của TV4):
+        - `countries[].name`: mã quốc gia ISO 3166-1 alpha-2 viết hoa (ví dụ `VN`), `XX` nếu không xác định.
+        - `devices[].name`: một trong `desktop`, `mobile`, `tablet`, `bot`, `other`.
+        - `referrers[].name`: domain nguồn giới thiệu (ví dụ `facebook.com`), `direct` nếu không có.
+        - `total_clicks` tính **cả click của bot**; `bot_clicks` là phần trong đó thuộc về bot
+          (click hợp lệ = `total_clicks - bot_clicks`).
+        - `unique_visitors` là số **ước tính**, đếm theo số `ip_hash` khác nhau trong khoảng thời gian chọn.
+
+        API chỉ trả số liệu tổng hợp, **không bao giờ trả `ip_hash` hay `user_agent` gốc**.
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Granularity'
+      responses:
+        '200':
+          description: Thống kê toàn hệ thống
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+              example:
+                code: null
+                updated_at: '2026-10-23T08:30:05Z'
+                from: '2026-10-23T07:30:00Z'
+                to: '2026-10-23T08:30:00Z'
+                granularity: minute
+                total_clicks: 1250
+                bot_clicks: 70
+                unique_visitors: 830
+                avg_clicks_per_minute: 20.8
+                flagged_links: 3
+                timeline:
+                  - { bucket: '2026-10-23T08:28:00Z', clicks: 14, bot_clicks: 1 }
+                  - { bucket: '2026-10-23T08:29:00Z', clicks: 9, bot_clicks: 0 }
+                top_links:
+                  - { code: aB3kLm9, clicks: 640 }
+                  - { code: khuyen-mai, clicks: 410 }
+                countries:
+                  - { name: VN, clicks: 900 }
+                  - { name: US, clicks: 150 }
+                  - { name: XX, clicks: 200 }
+                devices:
+                  - { name: mobile, clicks: 750 }
+                  - { name: desktop, clicks: 430 }
+                  - { name: bot, clicks: 70 }
+                browsers:
+                  - { name: Chrome, clicks: 700 }
+                  - { name: Safari, clicks: 300 }
+                referrers:
+                  - { name: facebook.com, clicks: 400 }
+                  - { name: direct, clicks: 350 }
+                recent_clicks:
+                  - timestamp: '2026-10-23T08:29:41Z'
+                    code: aB3kLm9
+                    country: VN
+                    device: mobile
+                    browser: Chrome
+                    referrer: facebook.com
+                    result: valid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /stats/{code}:
+    get:
+      tags: [Stats]
+      operationId: getLinkStats
+      summary: Thống kê của một link
+      description: |
+        Cùng cấu trúc và quy ước giá trị với `GET /stats`, giới hạn trong một link. Có thêm đối tượng `link`
+        (URL đích, trạng thái...) để hiển thị tiêu đề trang chi tiết; không có `top_links` và `flagged_links`.
+      parameters:
+        - $ref: '#/components/parameters/Code'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Granularity'
+      responses:
+        '200':
+          description: Thống kê của link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+              example:
+                code: aB3kLm9
+                updated_at: '2026-10-23T08:30:05Z'
+                from: '2026-10-23T07:30:00Z'
+                to: '2026-10-23T08:30:00Z'
+                granularity: minute
+                total_clicks: 640
+                bot_clicks: 30
+                unique_visitors: 410
+                avg_clicks_per_minute: 10.7
+                link:
+                  code: aB3kLm9
+                  short_url: https://linkpulse.vn/aB3kLm9
+                  long_url: https://example.com/bai-viet-rat-dai?id=123
+                  clicks: 640
+                  created_at: '2026-10-22T03:00:00Z'
+                  expires_at: null
+                  max_clicks: null
+                  status: active
+                timeline:
+                  - { bucket: '2026-10-23T08:28:00Z', clicks: 7, bot_clicks: 0 }
+                  - { bucket: '2026-10-23T08:29:00Z', clicks: 5, bot_clicks: 1 }
+                countries:
+                  - { name: VN, clicks: 500 }
+                devices:
+                  - { name: mobile, clicks: 400 }
+                  - { name: bot, clicks: 30 }
+                browsers:
+                  - { name: Chrome, clicks: 450 }
+                referrers:
+                  - { name: direct, clicks: 300 }
+                recent_clicks: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /links:
+    get:
+      tags: [Links]
+      operationId: listMyLinks
+      summary: Danh sách "Link của tôi"
+      description: |
+        Liệt kê các link của chủ sở hữu (theo header `X-Owner-Id`), không gồm link đã xóa.
+        Kèm số liệu tổng cho các thẻ đầu trang. Phân trang bằng **cursor** (hợp với DynamoDB):
+        gửi lại `next_cursor` của trang trước để lấy trang sau; `null` nghĩa là hết dữ liệu.
+      security:
+        - ownerId: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Tìm theo mã hoặc URL đích
+          schema:
+            type: string
+            maxLength: 200
+        - name: status
+          in: query
+          required: false
+          description: Lọc theo trạng thái. Bỏ trống = tất cả.
+          schema:
+            $ref: '#/components/schemas/LinkStatus'
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [created_at_desc, created_at_asc, clicks_desc, clicks_asc]
+            default: created_at_desc
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Giá trị `next_cursor` của trang trước
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Danh sách link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinksResponse'
+              example:
+                summary: { total_links: 12, active_links: 9, total_clicks: 4210 }
+                items:
+                  - code: aB3kLm9
+                    short_url: https://linkpulse.vn/aB3kLm9
+                    long_url: https://example.com/bai-viet-rat-dai?id=123
+                    clicks: 640
+                    created_at: '2026-10-22T03:00:00Z'
+                    expires_at: null
+                    max_clicks: null
+                    status: active
+                next_cursor: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /links/{code}:
+    delete:
+      tags: [Links]
+      operationId: deleteLink
+      summary: Xóa link rút gọn
+      description: |
+        Chỉ chủ sở hữu (đúng `X-Owner-Id`) mới được xóa. Sau khi xóa, truy cập mã đó trả về 404
+        và dữ liệu thống kê liên quan bị xóa. Mã đã xóa **không được cấp lại** cho link khác.
+        Frontend chỉ gọi sau khi người dùng bấm xác nhận.
+      security:
+        - ownerId: []
+      parameters:
+        - $ref: '#/components/parameters/Code'
+      responses:
+        '204':
+          description: Xóa thành công (không có nội dung trả về)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /{code}:
+    servers:
+      - url: https://linkpulse.vn
+        description: Link rút gọn nằm ở gốc domain, không có tiền tố `/api`
+    get:
+      tags: [Links]
+      operationId: redirectToUrl
+      summary: Chuyển hướng đến URL gốc
+      description: |
+        Tra cứu mã và chuyển hướng bằng **HTTP 302**. Mỗi lần thành công là 1 click (ghi click event).
+
+        Kết quả theo trạng thái link, và trang giao diện (TV2) tương ứng:
+
+        | Trạng thái | HTTP | `error.code` | Trang giao diện |
+        |---|---|---|---|
+        | Đang hoạt động | 302 | - | chuyển đến URL đích |
+        | Không tồn tại / đã xóa | 404 | `not_found` | `/error.html?type=404` |
+        | Hết hạn | 410 | `link_expired` | `/error.html?type=expired` |
+        | Hết lượt click | 410 | `max_clicks_reached` | `/error.html?type=max_clicks` |
+        | Bị chặn | 403 | `link_blocked` | `/warning.html?reason=blocked` (không bao giờ chuyển tiếp) |
+        | Đáng ngờ | 403 | `link_suspicious` | `/warning.html?reason=suspicious` |
+
+        Với link đáng ngờ, nếu người dùng chọn tiếp tục thì gọi lại `GET /{code}?confirm=1` để được 302.
+        `confirm=1` **không** có tác dụng với link bị chặn.
+        Thứ tự kiểm tra: bị chặn, hết hạn, hết lượt click, đáng ngờ.
+
+        Redirect luôn kèm `Cache-Control: no-store`. Cách hiển thị các trang lỗi/cảnh báo cho trình duyệt
+        (Lambda trả 302 sang trang đó, hay CloudFront custom error response) còn cần thống nhất với TV2 và TV5.
+      parameters:
+        - $ref: '#/components/parameters/Code'
+        - name: confirm
+          in: query
+          required: false
+          description: Đặt `1` để tiếp tục tới link đáng ngờ sau khi đã xem cảnh báo
+          schema:
+            type: integer
+            enum: [1]
+      responses:
+        '302':
+          description: Chuyển hướng đến URL gốc
+          headers:
+            Location:
+              description: URL gốc cần chuyển đến
+              schema:
+                type: string
+                format: uri
+                example: https://example.com/bai-viet-rat-dai?id=123
+            Cache-Control:
+              description: Luôn là `no-store` để trình duyệt không cache redirect
+              schema:
+                type: string
+                example: no-store
+        '403':
+          $ref: '#/components/responses/LinkRestricted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    ownerId:
+      type: apiKey
+      in: header
+      name: X-Owner-Id
+      description: |
+        UUID v4 do trình duyệt tạo và lưu (`linkpulse-owner-id`). Chỉ là định danh theo trình duyệt,
+        **không phải xác thực tài khoản**; xóa dữ liệu trình duyệt sẽ mất quyền quản lý link.
+
+  parameters:
+    Code:
+      name: code
+      in: path
+      required: true
+      description: Mã rút gọn, gồm 3 đến 30 ký tự chữ, số hoặc dấu gạch ngang (mã tự sinh luôn có 7 ký tự chữ và số)
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9-]{3,30}$'
+        example: aB3kLm9
+    From:
+      name: from
+      in: query
+      required: false
+      description: Bắt đầu khoảng thống kê (mặc định 60 phút trước)
+      schema:
+        type: string
+        format: date-time
+      example: '2026-10-23T07:30:00Z'
+    To:
+      name: to
+      in: query
+      required: false
+      description: Kết thúc khoảng thống kê (mặc định là hiện tại)
+      schema:
+        type: string
+        format: date-time
+      example: '2026-10-23T08:30:00Z'
+    Granularity:
+      name: granularity
+      in: query
+      required: false
+      description: Đơn vị gom nhóm của `timeline`
+      schema:
+        type: string
+        enum: [minute, hour]
+        default: minute
+
+  schemas:
+    ShortenRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: |
+            URL gốc. Chỉ chấp nhận `http` hoặc `https`, không chứa user:pass, không trỏ vào
+            địa chỉ nội bộ (localhost, 127.0.0.1, 10.x, 192.168.x, 169.254.x...) và không thuộc
+            chính domain của hệ thống.
+          example: https://example.com/bai-viet-rat-dai?id=123
+        alias:
+          type: string
+          pattern: '^[A-Za-z0-9-]{3,30}$'
+          description: |
+            Tên tùy chọn thay cho mã tự sinh, 3 đến 30 ký tự chữ, số hoặc dấu gạch ngang.
+            Phân biệt chữ hoa/thường. Không được trùng alias đã có (kể cả đã xóa) hoặc tên dành riêng
+            của hệ thống (`api`, `assets`, `dashboard`, `error`, `warning`...); khi đó trả 409 `alias_taken`.
+          example: khuyen-mai
+        expires_in:
+          type: integer
+          minimum: 60
+          maximum: 31536000
+          description: |
+            Thời gian link còn hiệu lực, tính bằng **giây** (giao diện gửi 3600, 86400 hoặc 604800).
+            Bỏ trống = không hết hạn.
+          example: 604800
+        max_clicks:
+          type: integer
+          minimum: 1
+          description: Số lượt click tối đa. Bỏ trống = không giới hạn.
+          example: 100
+        turnstile_token:
+          type: string
+          description: Token từ Cloudflare Turnstile, backend phải xác minh. Thiếu hoặc sai thì trả 400 `captcha_failed`.
+
+    ShortenResponse:
+      type: object
+      required: [code, short_url, created]
+      properties:
+        code:
+          type: string
+          example: aB3kLm9
+        short_url:
+          type: string
+          format: uri
+          example: https://linkpulse.vn/aB3kLm9
+        created:
+          type: boolean
+          description: "`true` nếu vừa tạo mới (HTTP 201), `false` nếu trả lại link cũ (HTTP 200)"
+        long_url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        max_clicks:
+          type: integer
+          nullable: true
+
+    LinkStatus:
+      type: string
+      description: Trạng thái hiển thị của link (khớp các nhãn trong màn "Link của tôi")
+      enum: [active, suspicious, blocked, max_clicks, expired]
+
+    LinkItem:
+      type: object
+      required: [code, short_url, long_url, clicks, created_at, status]
+      properties:
+        code:
+          type: string
+        short_url:
+          type: string
+          format: uri
+        long_url:
+          type: string
+          format: uri
+        clicks:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        max_clicks:
+          type: integer
+          nullable: true
+        status:
+          $ref: '#/components/schemas/LinkStatus'
+
+    LinksResponse:
+      type: object
+      required: [summary, items, next_cursor]
+      properties:
+        summary:
+          type: object
+          required: [total_links, active_links, total_clicks]
+          properties:
+            total_links:
+              type: integer
+              minimum: 0
+            active_links:
+              type: integer
+              minimum: 0
+            total_clicks:
+              type: integer
+              minimum: 0
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LinkItem'
+        next_cursor:
+          type: string
+          nullable: true
+
+    StatsResponse:
+      type: object
+      required: [updated_at, from, to, granularity, total_clicks, bot_clicks, unique_visitors, timeline]
+      properties:
+        code:
+          type: string
+          nullable: true
+          description: Mã link nếu là thống kê theo link, `null` nếu là toàn hệ thống
+        updated_at:
+          type: string
+          format: date-time
+          description: Thời điểm số liệu được tổng hợp (hiển thị cạnh nhãn LIVE)
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        granularity:
+          type: string
+          enum: [minute, hour]
+        total_clicks:
+          type: integer
+          minimum: 0
+          description: Tổng click, gồm cả click của bot
+        bot_clicks:
+          type: integer
+          minimum: 0
+          description: Số click được nhận diện là bot (nằm trong `total_clicks`)
+        unique_visitors:
+          type: integer
+          minimum: 0
+          description: Số ước tính theo số `ip_hash` khác nhau
+        avg_clicks_per_minute:
+          type: number
+          minimum: 0
+          description: "`total_clicks` chia cho số phút trong khoảng thời gian"
+        flagged_links:
+          type: integer
+          minimum: 0
+          description: Số link bị gắn cờ (đáng ngờ hoặc bị chặn). Chỉ có ở `GET /stats`.
+        link:
+          allOf:
+            - $ref: '#/components/schemas/LinkItem'
+          description: Thông tin link. Chỉ có ở `GET /stats/{code}`.
+        timeline:
+          type: array
+          description: |
+            Số click theo từng phút (hoặc giờ), sắp xếp tăng dần theo thời gian.
+            `bucket` là ISO 8601 UTC đầy đủ có giây (ví dụ `2026-10-23T08:28:00Z`).
+            Nguồn dữ liệu của TV4 là `clicks_per_minute[].minute` (nhãn không có giây);
+            lớp API đổi tên thành `bucket` và thêm `:00`.
+          items:
+            type: object
+            required: [bucket, clicks, bot_clicks]
+            properties:
+              bucket:
+                type: string
+                format: date-time
+              clicks:
+                type: integer
+                minimum: 0
+              bot_clicks:
+                type: integer
+                minimum: 0
+        top_links:
+          type: array
+          description: |
+            Các link nhiều click nhất, giảm dần theo số click (bằng nhau thì theo `code` tăng dần).
+            Chỉ trả `code` và số click, không trả `long_url` để tránh lộ đích đến của link người khác.
+            Chỉ có ở `GET /stats`.
+          items:
+            type: object
+            required: [code, clicks]
+            properties:
+              code:
+                type: string
+              clicks:
+                type: integer
+                minimum: 0
+        countries:
+          $ref: '#/components/schemas/Breakdown'
+        devices:
+          $ref: '#/components/schemas/Breakdown'
+        browsers:
+          $ref: '#/components/schemas/Breakdown'
+        referrers:
+          $ref: '#/components/schemas/Breakdown'
+        recent_clicks:
+          type: array
+          description: Một số click gần nhất (mới nhất trước). Không chứa IP hay User-Agent gốc.
+          items:
+            type: object
+            required: [timestamp, code, country, device, browser, referrer, result]
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              code:
+                type: string
+              country:
+                type: string
+                example: VN
+              device:
+                type: string
+                enum: [desktop, mobile, tablet, bot, other]
+              browser:
+                type: string
+              referrer:
+                type: string
+              result:
+                type: string
+                enum: [valid, bot]
+
+    Breakdown:
+      type: array
+      description: Phân bố số click theo một tiêu chí, sắp xếp giảm dần
+      items:
+        type: object
+        required: [name, clicks]
+        properties:
+          name:
+            type: string
+          clicks:
+            type: integer
+            minimum: 0
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code]
+          properties:
+            code:
+              type: string
+              description: Mã lỗi để chương trình xử lý
+            message:
+              type: string
+              description: Mô tả cho người đọc (tùy chọn)
+            reason:
+              type: string
+              description: Chi tiết để debug (tùy chọn), ví dụ `host_not_allowed`, `own_domain`
+            retry_after:
+              type: integer
+              description: Chỉ có ở 429, số giây cần chờ (trùng với header `Retry-After`)
+
+  responses:
+    BadRequest:
+      description: |
+        Yêu cầu không hợp lệ. Các `error.code` có thể gặp:
+        `invalid_url` (kể cả URL nội bộ, sai giao thức, thuộc chính hệ thống),
+        `blocked_domain` (domain nằm trong blocklist hoặc bị Safe Browsing đánh dấu),
+        `invalid_alias`, `invalid_expires_in`, `invalid_max_clicks`,
+        `captcha_failed` (Turnstile thiếu hoặc sai), `invalid_request` (JSON hỏng, tham số thống kê sai).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidUrl:
+              value:
+                error: { code: invalid_url, message: URL không hợp lệ., reason: host_not_allowed }
+            blockedDomain:
+              value:
+                error: { code: blocked_domain, message: Domain này đang bị chặn. }
+    AliasTaken:
+      description: Alias đã được dùng (hoặc là tên dành riêng của hệ thống)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: { code: alias_taken, message: Alias này đã được sử dụng. }
+    Unauthorized:
+      description: Thiếu header `X-Owner-Id`
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: { code: unauthorized, message: Thiếu định danh chủ sở hữu. }
+    Forbidden:
+      description: Link không thuộc về `X-Owner-Id` này
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: { code: forbidden, message: Bạn không có quyền xóa link này. }
+    NotFound:
+      description: Không tìm thấy mã (hoặc link đã bị xóa)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: { code: not_found, message: Không tìm thấy link. }
+    LinkRestricted:
+      description: |
+        Link bị chặn (`link_blocked`, không bao giờ chuyển tiếp) hoặc đáng ngờ (`link_suspicious`,
+        có thể tiếp tục bằng `?confirm=1` sau khi người dùng xem cảnh báo).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            blocked:
+              value:
+                error: { code: link_blocked, message: Link đã bị chặn. }
+            suspicious:
+              value:
+                error: { code: link_suspicious, message: Link cần được xem xét. }
+    Gone:
+      description: |
+        Link không còn hiệu lực. `error.code` là `link_expired` hoặc `max_clicks_reached`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            expired:
+              value:
+                error: { code: link_expired, message: Link đã hết hạn. }
+            maxClicks:
+              value:
+                error: { code: max_clicks_reached, message: Link đã đạt giới hạn click. }
+    TooManyRequests:
+      description: Vượt giới hạn tốc độ (rate limit)
+      headers:
+        Retry-After:
+          description: Số giây cần chờ trước khi thử lại
+          schema:
+            type: integer
+            example: 42
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: { code: rate_limited, message: Bạn thao tác quá nhanh., retry_after: 42 }
+    InternalError:
+      description: Lỗi hệ thống (ví dụ không sinh được mã sau nhiều lần thử)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: { code: internal_error, message: Đã xảy ra lỗi, vui lòng thử lại sau. }
