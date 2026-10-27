@@ -1,0 +1,329 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Smart URL Shortener - rút gọn liên kết thông minh, phân tích lưu lượng gần thời gian thực
+  và chống lạm dụng, kiến trúc serverless (HTTP API + Lambda + DynamoDB).
+
+Parameters:
+  BaseUrl:
+    Type: String
+    Default: https://linkpulse.vn
+    Description: Domain công khai của link rút gọn (dùng để dựng short_url, không có dấu / cuối)
+  OwnDomains:
+    Type: String
+    Default: linkpulse.vn
+    Description: Các domain của hệ thống, cách nhau bởi dấu phẩy. URL trỏ về đây bị từ chối (chống vòng lặp)
+  IpHashSalt:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Chuỗi bí mật dùng băm IP (HMAC). Không có mặc định, bắt buộc nhập khi deploy
+  TurnstileSecretParam:
+    Type: String
+    Default: ''
+    Description: Tên SSM SecureString chứa Turnstile secret key, ví dụ /linkpulse/turnstile-secret. Để trống = tắt captcha
+  SafeBrowsingKeyParam:
+    Type: String
+    Default: ''
+    Description: Tên SSM SecureString chứa Google Safe Browsing API key. Để trống = tắt
+  OriginVerifySecretParam:
+    Type: String
+    Default: ''
+    Description: >
+      Tên SSM SecureString chứa bí mật dùng chung với CloudFront (header X-Origin-Verify), ví dụ
+      /linkpulse/origin-verify. Khi đặt, API chỉ nhận request đi qua CloudFront. Để trống = tắt (dev)
+  CorsOrigin:
+    Type: String
+    Default: '*'
+    Description: Origin được phép gọi API từ trình duyệt (khi chạy sau CloudFront cùng domain thì không cần CORS)
+  ErrorPageMode:
+    Type: String
+    Default: json
+    AllowedValues: [json, redirect]
+    Description: json = trả lỗi JSON đúng spec; redirect = 302 sang error.html/warning.html cho trình duyệt
+  RedirectRateLimit:
+    Type: Number
+    Default: 300
+    Description: Số lượt redirect tối đa mỗi IP mỗi phút (0 = tắt)
+
+Conditions:
+  HasTurnstile: !Not [!Equals [!Ref TurnstileSecretParam, '']]
+  HasSafeBrowsing: !Not [!Equals [!Ref SafeBrowsingKeyParam, '']]
+  HasOriginVerify: !Not [!Equals [!Ref OriginVerifySecretParam, '']]
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Architectures: [arm64]       # rẻ hơn x86 ~20%
+    Timeout: 5                   # giây; redirect/API đều rất nhanh
+    MemorySize: 256              # MB; 256 là điểm khởi đầu hợp lý, tinh chỉnh theo số liệu CloudWatch
+    CodeUri: src/
+    Environment:
+      Variables:
+        URLS_TABLE: !Ref UrlsTable
+        CLICKS_TABLE: !Ref ClicksTable
+        STATS_TABLE: !Ref StatsTable
+        RATE_LIMITS_TABLE: !Ref RateLimitsTable
+        BLOCKLIST_TABLE: !Ref BlocklistTable
+        BASE_URL: !Ref BaseUrl
+        OWN_DOMAINS: !Ref OwnDomains
+        IP_HASH_SALT: !Ref IpHashSalt
+        TURNSTILE_SECRET_PARAM: !Ref TurnstileSecretParam
+        SAFE_BROWSING_KEY_PARAM: !Ref SafeBrowsingKeyParam
+        ORIGIN_VERIFY_SECRET_PARAM: !Ref OriginVerifySecretParam
+        ERROR_PAGE_MODE: !Ref ErrorPageMode
+        REDIRECT_RATE_LIMIT: !Ref RedirectRateLimit
+
+Resources:
+  # ------------------------------------------------------------------ API
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: [!Ref CorsOrigin]
+        AllowMethods: [GET, POST, DELETE, OPTIONS]
+        AllowHeaders: [content-type, x-owner-id]
+        MaxAge: 600
+      # Lớp chống lạm dụng thứ nhất (sau WAF): giới hạn toàn API. Rate limit theo IP nằm trong code.
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 200
+        ThrottlingRateLimit: 100
+      RouteSettings:
+        "POST /api/shorten":
+          ThrottlingBurstLimit: 20
+          ThrottlingRateLimit: 10
+
+  # Quyền đọc bí mật origin, gắn cho mọi Lambda phục vụ API (process_clicks không nhận request HTTP nên không cần)
+  OriginSecretReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Condition: HasOriginVerify
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: ssm:GetParameter
+            Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${OriginVerifySecretParam}"
+
+  # ------------------------------------------------------------------ Lambda
+  ShortenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.shorten.lambda_handler
+      Description: POST /api/shorten
+      Timeout: 10                # có gọi DNS, Turnstile, Safe Browsing
+      Policies:
+        - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
+        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref RateLimitsTable}
+        - DynamoDBReadPolicy: {TableName: !Ref BlocklistTable}
+        - DynamoDBWritePolicy: {TableName: !Ref StatsTable}   # bộ đếm flagged_links
+        # Tên tham số SSM bắt đầu bằng "/" nên nối thẳng vào ARN (.../parameter/linkpulse/x)
+        - !If
+          - HasTurnstile
+          - Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${TurnstileSecretParam}"
+          - !Ref AWS::NoValue
+        - !If
+          - HasSafeBrowsing
+          - Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SafeBrowsingKeyParam}"
+          - !Ref AWS::NoValue
+      Events:
+        Shorten:
+          Type: HttpApi
+          Properties: {ApiId: !Ref HttpApi, Path: /api/shorten, Method: POST}
+
+  RedirectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.redirect.lambda_handler
+      Description: GET /{code} - chuyển hướng và ghi click
+      Policies:
+        - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
+        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
+        - DynamoDBWritePolicy: {TableName: !Ref ClicksTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref RateLimitsTable}
+      Events:
+        Redirect:
+          Type: HttpApi
+          Properties: {ApiId: !Ref HttpApi, Path: '/{code}', Method: GET}
+
+  LinksFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.links.lambda_handler
+      Description: GET /api/links, DELETE /api/links/{code}
+      Timeout: 15                # xóa link kèm dọn dữ liệu thống kê
+      Policies:
+        - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
+        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref ClicksTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref StatsTable}
+      Events:
+        List:
+          Type: HttpApi
+          Properties: {ApiId: !Ref HttpApi, Path: /api/links, Method: GET}
+        Delete:
+          Type: HttpApi
+          Properties: {ApiId: !Ref HttpApi, Path: '/api/links/{code}', Method: DELETE}
+
+  StatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.stats.lambda_handler
+      Description: GET /api/stats, GET /api/stats/{code}
+      Policies:
+        - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
+        - DynamoDBReadPolicy: {TableName: !Ref UrlsTable}
+        - DynamoDBReadPolicy: {TableName: !Ref ClicksTable}
+        - DynamoDBReadPolicy: {TableName: !Ref StatsTable}
+      Events:
+        Global:
+          Type: HttpApi
+          Properties: {ApiId: !Ref HttpApi, Path: /api/stats, Method: GET}
+        PerLink:
+          Type: HttpApi
+          Properties: {ApiId: !Ref HttpApi, Path: '/api/stats/{code}', Method: GET}
+
+  HealthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.health.lambda_handler
+      Description: GET /api/health
+      MemorySize: 128
+      Policies:
+        - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
+      Events:
+        Health:
+          Type: HttpApi
+          Properties: {ApiId: !Ref HttpApi, Path: /api/health, Method: GET}
+
+  # Xử lý click theo luồng: DynamoDB Stream -> cộng dồn thống kê theo phút + phát hiện lạm dụng
+  ProcessClicksFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.process_clicks.lambda_handler
+      Description: Stream clicks -> stats theo phút + gắn cờ link bất thường
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref StatsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
+        - SQSSendMessagePolicy: {QueueName: !GetAtt ClickDeadLetterQueue.QueueName}
+      Events:
+        ClickStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt ClicksTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 100
+            MaximumBatchingWindowInSeconds: 2       # độ trễ thống kê ~ vài giây
+            MaximumRetryAttempts: 3
+            BisectBatchOnFunctionError: true
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName": ["INSERT"]}'
+            DestinationConfig:
+              OnFailure:
+                Type: SQS
+                Destination: !GetAtt ClickDeadLetterQueue.Arn
+
+  ClickDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600               # 14 ngày
+
+  # ------------------------------------------------------------------ DynamoDB (on-demand)
+  UrlsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: short_code, AttributeType: S}
+        - {AttributeName: owner_id, AttributeType: S}
+        - {AttributeName: created_at, AttributeType: S}
+      KeySchema:
+        - {AttributeName: short_code, KeyType: HASH}
+      GlobalSecondaryIndexes:
+        - IndexName: owner-index
+          KeySchema:
+            - {AttributeName: owner_id, KeyType: HASH}
+            - {AttributeName: created_at, KeyType: RANGE}
+          Projection: {ProjectionType: ALL}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+
+  ClicksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: short_code, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: short_code, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+      StreamSpecification: {StreamViewType: NEW_IMAGE}
+
+  StatsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: scope, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: scope, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+
+  RateLimitsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+
+  BlocklistTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: domain, AttributeType: S}
+      KeySchema:
+        - {AttributeName: domain, KeyType: HASH}
+
+  # ------------------------------------------------------------------ Cảnh báo
+  DlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Có click event xử lý thất bại (nằm trong DLQ), thống kê có thể thiếu
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{Name: QueueName, Value: !GetAtt ClickDeadLetterQueue.QueueName}]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  ApiUrl:
+    Description: Gốc URL của API (trỏ CloudFront/domain về đây)
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  ApiDomain:
+    Description: Domain API Gateway (tham số ApiDomain của infra/edge.yaml)
+    Value: !Sub "${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  BlocklistTableName:
+    Description: Thêm domain bị chặn vào bảng này
+    Value: !Ref BlocklistTable
