@@ -1,0 +1,6 @@
+# Chỉ dùng khi phát triển/test. Lambda runtime đã có sẵn boto3 nên không cần requirements khi deploy.
+boto3
+pytest
+moto[dynamodb,ssm]
+cfn-lint
+aws-sam-cli
