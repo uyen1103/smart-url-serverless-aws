@@ -1,4 +1,4 @@
-# Frontend & Presentation — Tuần 1 (TV2)
+# Frontend & Presentation — (TV2)
 
 
 ## Quyết định chính
@@ -8,7 +8,7 @@
 | Hosting | S3 riêng tư + CloudFront/OAC | Bucket không public; CloudFront phục vụ giao diện qua HTTPS |
 | Domain | Domain mặc định `*.cloudfront.net` | Có HTTPS sẵn, chưa cần mua domain riêng |
 | Frontend | HTML, CSS, JavaScript thuần | Không cần build; phù hợp prototype và các trang static |
-| Biểu đồ | Chart.js, đóng gói cùng ứng dụng | Vẽ được area/line và donut; không phụ thuộc CDN khi chạy |
+| Biểu đồ (đề xuất ban đầu) | Chart.js, đóng gói cùng ứng dụng | Vẽ được area/line và donut; không phụ thuộc CDN khi chạy |
 | Chống bot | Cloudflare Turnstile | Backend xác minh token trước khi tạo link |
 | Phát triển local | Static server và mock JSON | Làm giao diện trước khi API sẵn sàng |
 
@@ -138,7 +138,9 @@ Từ danh sách Link của tôi, người dùng có thể tạo link mới, mở
 | Recharts | React | Biểu đồ khai báo bằng component, tích hợp tự nhiên với React | Không phù hợp nếu giữ frontend thuần; thêm dependency React |
 | Apache ECharts | JavaScript thuần hoặc React | Nhiều loại biểu đồ và tùy chọn tương tác | Nhiều tính năng hơn nhu cầu dashboard hiện tại; cần cân nhắc kích thước và độ phức tạp |
 
-**Đề xuất Chart.js** vì dashboard cần biểu đồ click theo thời gian và donut thiết bị, còn top link/quốc gia/nguồn có thể dùng thanh CSS. Cách này đáp ứng các biểu đồ cần có mà không buộc nhóm phải chuyển sang React. Khi tích hợp thật, pin phiên bản, đóng gói thư viện cùng ứng dụng (không tải từ CDN) và chỉ nạp ở trang thống kê.
+**Đề xuất nghiên cứu ban đầu là Chart.js**, vì dashboard cần biểu đồ click theo thời gian và donut thiết bị, còn top link/quốc gia/nguồn có thể dùng thanh CSS.
+
+**Cập nhật triển khai tuần 2–3:** frontend hiện vẽ biểu đồ bằng SVG/DOM trong `frontend/js/charts.js`, không tải Chart.js hay thư viện biểu đồ ngoài. Lý do là số liệu cần hiển thị giới hạn, không cần thêm dependency, và dashboard đang dùng HTML/CSS/ES modules không có bước build. Nếu yêu cầu biểu đồ hoặc tương tác tăng lên, nhóm có thể quay lại quyết định Chart.js và cần ghi nhận thay đổi dependency. Chi tiết trạng thái triển khai, API mapping, chạy thử và checklist nằm trong [frontend_week2_3.md](./frontend_week2_3.md).
 
 - Prototype tại `frontend/prototype/` dùng mock JSON, chỉ minh họa form rút gọn link, không gọi API production.
 
@@ -150,16 +152,10 @@ python -m http.server 8000 --directory frontend/prototype
 
 Mở `http://localhost:8000`; đổi trạng thái bằng `?scenario=ok`, `duplicate`, `invalid_url`, `blocked_domain`, `alias_taken`, `rate_limited` hoặc `network`.
 
-## 7. Việc cần thống nhất
-
-- **TV1:** endpoint/schema, mã lỗi, `Retry-After`, Turnstile, redirect và API thống kê/xóa link.
-- **TV4:** quy tắc URL, link bị chặn/đáng ngờ và hành vi xác nhận tiếp tục.
-- **TV5:** CloudFront behaviors, OAC, cache/invalidation, routing và chi phí.
-- **Cả nhóm:** công nghệ cuối cùng, phạm vi triển khai và template slide. Outline slide: bài toán → kiến trúc → luồng/giao diện → demo → kết quả và giới hạn.
-
 ## Tài liệu liên quan
 
 - [Wireframe](./gui_wireframe.md)
+- [Frontend tuần 2–3: triển khai, API và kiểm thử](./frontend_week2_3.md)
 - [Ảnh giao diện](./screenshots/)
 - [Sơ đồ kiến trúc và luồng](./diagrams/)
 - [Prototype](../frontend/prototype/)

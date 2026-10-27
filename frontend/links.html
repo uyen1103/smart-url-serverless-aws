@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Quản lý các liên kết rút gọn của bạn.">
+  <title>Link của tôi — LinkPulse</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Danh sách, bộ lọc và thao tác xóa được xử lý trong links.js. -->
+  <script type="module" src="/js/links.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Bỏ qua điều hướng</a>
+  <header class="site-header" data-site-header></header>
+  <main id="main" class="container main-content">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">Quản lý liên kết</p>
+        <h1>Link của tôi</h1>
+        <p class="subtitle">Tìm, theo dõi và xóa liên kết thuộc mã chủ sở hữu trên thiết bị này.</p>
+      </div>
+      <a class="btn btn-primary" href="/index.html">Tạo liên kết <span aria-hidden="true">→</span></a>
+    </div>
+    <div id="links-notice" class="notice notice-error" role="status" aria-live="polite" hidden>
+      <div class="notice-content"></div>
+      <button class="btn btn-secondary btn-small" id="links-retry" type="button">Thử lại</button>
+    </div>
+    <!-- JavaScript dựng bảng và trạng thái rỗng trong các vùng có id. -->
+    <section class="surface section-spacer" aria-label="Danh sách liên kết">
+      <form class="toolbar surface-pad" id="filters-form">
+        <div class="toolbar-group">
+          <label class="sr-only" for="search-input">Tìm theo mã hoặc URL đích</label>
+          <input id="search-input" class="control" type="search" maxlength="200" placeholder="Tìm mã hoặc URL đích">
+          <label class="sr-only" for="status-select">Lọc theo trạng thái</label>
+          <select id="status-select" class="control">
+            <option value="">Tất cả trạng thái</option>
+            <option value="active">Đang hoạt động</option>
+            <option value="expired">Đã hết hạn</option>
+            <option value="max_clicks">Đạt giới hạn click</option>
+            <option value="suspicious">Đáng ngờ</option>
+            <option value="blocked">Bị chặn</option>
+          </select>
+        </div>
+        <div class="toolbar-group">
+          <label class="sr-only" for="sort-select">Sắp xếp</label>
+          <select id="sort-select" class="control">
+            <option value="created_at_desc">Mới nhất</option>
+            <option value="created_at_asc">Cũ nhất</option>
+            <option value="clicks_desc">Click nhiều nhất</option>
+            <option value="clicks_asc">Click ít nhất</option>
+          </select>
+          <button class="btn btn-secondary" type="submit">Lọc</button>
+        </div>
+      </form>
+      <div id="links-table" class="table-wrap" aria-live="polite">
+        <div class="loading-row"><span class="spinner"></span>Đang tải danh sách liên kết…</div>
+      </div>
+      <div class="pagination">
+        <span id="pagination-info" class="pagination-info" aria-live="polite">Đang tải…</span>
+        <div class="toolbar-group">
+          <button id="previous-page" class="btn btn-secondary btn-small" type="button" disabled>Trang trước</button>
+          <button id="next-page" class="btn btn-secondary btn-small" type="button" disabled>Trang sau</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer" data-site-footer></footer>
+  <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

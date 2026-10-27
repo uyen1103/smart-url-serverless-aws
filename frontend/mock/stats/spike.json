@@ -1,0 +1,25 @@
+{
+  "code": null,
+  "updated_at": "2026-10-27T14:00:00Z",
+  "from": "2026-10-27T13:00:00Z",
+  "to": "2026-10-27T14:00:00Z",
+  "granularity": "minute",
+  "total_clicks": 980,
+  "bot_clicks": 215,
+  "unique_visitors": 280,
+  "avg_clicks_per_minute": 16.3,
+  "flagged_links": 1,
+  "timeline": [
+    { "bucket": "2026-10-27T13:56:00Z", "clicks": 12, "bot_clicks": 1 },
+    { "bucket": "2026-10-27T13:57:00Z", "clicks": 15, "bot_clicks": 2 },
+    { "bucket": "2026-10-27T13:58:00Z", "clicks": 230, "bot_clicks": 101 },
+    { "bucket": "2026-10-27T13:59:00Z", "clicks": 280, "bot_clicks": 88 },
+    { "bucket": "2026-10-27T14:00:00Z", "clicks": 16, "bot_clicks": 4 }
+  ],
+  "top_links": [{ "code": "aB3xY9k", "clicks": 612 }],
+  "countries": [{ "name": "VN", "clicks": 730 }],
+  "devices": [{ "name": "mobile", "clicks": 580 }, { "name": "desktop", "clicks": 185 }, { "name": "bot", "clicks": 215 }],
+  "browsers": [{ "name": "Chrome", "clicks": 620 }],
+  "referrers": [{ "name": "direct", "clicks": 340 }],
+  "recent_clicks": []
+}

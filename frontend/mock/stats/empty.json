@@ -1,0 +1,19 @@
+{
+  "code": null,
+  "updated_at": "2026-10-27T14:00:00Z",
+  "from": "2026-10-27T13:00:00Z",
+  "to": "2026-10-27T14:00:00Z",
+  "granularity": "minute",
+  "total_clicks": 0,
+  "bot_clicks": 0,
+  "unique_visitors": 0,
+  "avg_clicks_per_minute": 0,
+  "flagged_links": 0,
+  "timeline": [],
+  "top_links": [],
+  "countries": [],
+  "devices": [],
+  "browsers": [],
+  "referrers": [],
+  "recent_clicks": []
+}

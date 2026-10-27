@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Rút gọn liên kết an toàn với LinkPulse.">
+  <title>Rút gọn liên kết — LinkPulse</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Mỗi trang chỉ tải module JavaScript phục vụ đúng chức năng của trang đó. -->
+  <script type="module" src="/js/home.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Bỏ qua điều hướng</a>
+  <header class="site-header" data-site-header></header>
+  <main id="main" class="container main-content">
+    <!-- Phần giới thiệu và form là nội dung chính của trang rút gọn link. -->
+    <section class="home-intro">
+      <span class="pill home-pill"><span aria-hidden="true">ϟ</span>Serverless trên AWS · Thống kê thời gian thực · Chống lạm dụng</span>
+      <h1>Rút gọn liên kết.<br>Theo dõi từng cú click.</h1>
+      <p>Dán đường dẫn dài, nhận link ngắn trong tích tắc. Mọi lượt click được thống kê gần như tức thì và được bảo vệ khỏi lạm dụng.</p>
+    </section>
+
+    <section class="surface home-form" aria-labelledby="create-heading">
+      <h2 id="create-heading" class="sr-only">Tạo liên kết rút gọn</h2>
+      <div id="form-notice" class="notice" role="status" aria-live="polite" hidden>
+        <div class="notice-content"></div>
+        <button class="icon-button" type="button" aria-label="Đóng thông báo" data-dismiss-notice>×</button>
+      </div>
+      <form id="shorten-form" novalidate>
+        <div class="field">
+            <label for="url-input">Đường dẫn dài</label>
+            <input id="url-input" name="url" type="url" inputmode="url" autocomplete="url" maxlength="2048" placeholder="https://example.com/bai-viet" aria-describedby="url-hint url-error" required>
+            <p id="url-hint" class="field-hint">Hỗ trợ http:// và https://, tối đa 2048 ký tự.</p>
+            <p id="url-error" class="field-error" aria-live="polite"></p>
+        </div>
+        <div class="options-grid">
+          <div class="field">
+            <label for="alias-input">Tên tùy chỉnh</label>
+            <div class="alias-input">
+              <span class="alias-prefix" aria-hidden="true">linkpulse.vn/</span>
+              <input id="alias-input" name="alias" type="text" minlength="3" maxlength="30" autocomplete="off" placeholder="khuyen-mai-tet" aria-describedby="alias-hint alias-error">
+            </div>
+            <p id="alias-hint" class="field-hint">3–30 ký tự, tùy chọn.</p>
+            <p id="alias-error" class="field-error" aria-live="polite"></p>
+          </div>
+          <div class="field">
+            <label for="expiry-input">Thời hạn</label>
+            <select id="expiry-input" name="expiry">
+              <option value="3600">1 giờ</option>
+              <option value="86400">24 giờ</option>
+              <option value="604800" selected>7 ngày (mặc định)</option>
+              <option value="2592000">30 ngày</option>
+              <option value="">Không hết hạn</option>
+            </select>
+            <p class="field-hint">Thời hạn gửi lên theo giây.</p>
+          </div>
+          <div class="field">
+            <label for="max-clicks-input">Giới hạn lượt click</label>
+            <input id="max-clicks-input" name="max_clicks" type="number" min="1" step="1" inputmode="numeric" placeholder="Không giới hạn" aria-describedby="clicks-error">
+            <p class="field-hint">Tùy chọn.</p>
+            <p id="clicks-error" class="field-error" aria-live="polite"></p>
+          </div>
+        </div>
+        <button id="submit-button" class="btn btn-primary btn-large" type="submit"><span aria-hidden="true">↗</span> Rút gọn link</button>
+        <p class="home-note"><span aria-hidden="true">♢</span> Link được kiểm tra an toàn trước khi tạo</p>
+      </form>
+      <section id="result-card" class="result-card" aria-live="polite" hidden>
+        <div class="result-top">
+          <p id="result-title" class="result-title"></p>
+          <span id="result-status" class="pill pill-active">Đang hoạt động</span>
+        </div>
+        <div class="result-link">
+          <a id="short-url" class="mono" target="_blank" rel="noopener noreferrer"></a>
+          <button id="copy-button" class="btn btn-secondary btn-small" type="button">Sao chép</button>
+        </div>
+        <p id="result-destination" class="result-details"></p>
+        <div class="result-meta">
+          <span id="result-expiry"></span>
+          <span id="result-limit"></span>
+          <span>Đã qua kiểm tra URL</span>
+        </div>
+        <div class="result-actions">
+          <a id="result-stats" class="btn btn-secondary btn-small" href="/dashboard.html">Xem thống kê</a>
+          <button id="new-link-button" class="btn btn-ghost btn-small" type="button">Tạo link khác</button>
+        </div>
+      </section>
+    </section>
+    <!-- Các thẻ dưới đây giới thiệu tính năng, không thay thế trạng thái backend. -->
+    <section class="feature-grid" aria-label="Tính năng LinkPulse">
+      <article class="surface feature-card">
+        <span class="feature-icon" aria-hidden="true">ϟ</span>
+        <h2>Click theo thời gian thực</h2>
+        <p>Mỗi lượt truy cập được ghi nhận và hiển thị trên dashboard chỉ sau vài giây.</p>
+      </article>
+      <article class="surface feature-card">
+        <span class="feature-icon" aria-hidden="true">◇</span>
+        <h2>Chống lạm dụng tự động</h2>
+        <p>Kiểm tra URL, giới hạn tốc độ và tự động chặn link có dấu hiệu bất thường.</p>
+      </article>
+      <article class="surface feature-card">
+        <span class="feature-icon" aria-hidden="true">⌁</span>
+        <h2>Serverless trên AWS</h2>
+        <p>Lambda, DynamoDB và CloudFront tự mở rộng theo lưu lượng.</p>
+      </article>
+    </section>
+    <section class="demo-scenario" aria-label="Mô phỏng kịch bản" data-demo-scenario hidden>
+      <label for="scenario-select">Kịch bản kiểm thử</label>
+      <span>Mô phỏng phản hồi API:</span>
+      <select id="scenario-select" class="control">
+        <option value="ok">201 Tạo thành công</option>
+        <option value="duplicate">200 Link đã tồn tại (trả mã cũ)</option>
+        <option value="rate_limited">429 rate_limited</option>
+        <option value="network">Lỗi mạng</option>
+        <option value="blocked_domain">400 blocked_domain</option>
+        <option value="invalid_url">400 invalid_url</option>
+        <option value="alias_taken">409 alias_taken</option>
+      </select>
+    </section>
+    <p class="home-footer">Trang người truy cập link có thể gặp:
+      <a href="/warning.html?reason=suspicious">Link đáng ngờ</a>
+      <a href="/warning.html?reason=blocked">Link bị chặn</a>
+      <a href="/error.html?type=404">404</a>
+      <a href="/error.html?type=expired">Hết hạn</a>
+      <a href="/error.html?type=max_clicks">Hết lượt</a>
+    </p>
+  </main>
+  <footer class="site-footer" data-site-footer></footer>
+  <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

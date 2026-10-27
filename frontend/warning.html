@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Cảnh báo an toàn liên kết LinkPulse.">
+  <title>Cảnh báo liên kết — LinkPulse</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- warning.js chọn nội dung theo reason=blocked|suspicious. -->
+  <script type="module" src="/js/warning.js"></script>
+</head>
+<body>
+  <header class="site-header" data-site-header></header>
+  <main id="main" class="state-page">
+    <section class="surface state-card" aria-labelledby="warning-title">
+      <div class="state-icon warning" aria-hidden="true">!</div>
+      <p class="eyebrow" id="warning-eyebrow">Cảnh báo an toàn</p>
+      <h1 id="warning-title">Cần chú ý trước khi tiếp tục</h1>
+      <p id="warning-message"></p>
+      <p id="warning-code" class="mono muted"></p>
+      <div id="warning-actions" class="state-actions"></div>
+    </section>
+  </main>
+  <footer class="site-footer" data-site-footer></footer>
+  <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

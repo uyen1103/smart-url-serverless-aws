@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Thông tin về các lớp bảo vệ LinkPulse.">
+  <title>Bảo vệ liên kết — LinkPulse</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Trang chỉ đọc thông tin lớp bảo vệ và các link bị gắn cờ. -->
+  <script type="module" src="/js/protection.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Bỏ qua điều hướng</a>
+  <header class="site-header" data-site-header></header>
+  <main id="main" class="container main-content">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">An toàn liên kết</p>
+        <h1>Các lớp bảo vệ</h1>
+        <p class="subtitle">Trang chỉ xem các biện pháp chống lạm dụng của hệ thống; không có thao tác quản trị hay thay đổi trạng thái.</p>
+      </div>
+      <a class="btn btn-secondary" href="/index.html">Quay về trang chủ</a>
+    </div>
+    <div class="notice notice-info" role="note">
+      <div class="notice-content">
+        <strong class="notice-title">Bảo vệ nhiều lớp</strong>
+        Quyết định chặn, giới hạn tốc độ và cảnh báo được thực hiện ở backend/hạ tầng. Giao diện không thay thế các kiểm tra này.
+      </div>
+    </div>
+    <div id="protection-notice" class="notice notice-warning section-spacer" role="status" aria-live="polite" hidden>
+      <div class="notice-content"></div>
+      <button class="btn btn-secondary btn-small" id="protection-retry" type="button">Thử lại</button>
+    </div>
+    <!-- Backend quyết định trạng thái; trang này không cung cấp thao tác quản trị. -->
+    <section id="protection-metrics" class="card-grid section-spacer" aria-label="Thống kê liên kết"></section>
+    <section class="surface section-spacer">
+      <div class="surface-pad toolbar">
+        <div><h2>Liên kết bị gắn cờ</h2><p class="helper-caption muted">Chỉ hiển thị liên kết thuộc mã chủ sở hữu trên thiết bị này.</p></div>
+        <label class="sr-only" for="flagged-filter">Lọc liên kết bị gắn cờ</label>
+        <select id="flagged-filter" class="control">
+          <option value="">Tất cả</option>
+          <option value="suspicious">Đáng ngờ</option>
+          <option value="blocked">Bị chặn</option>
+        </select>
+      </div>
+      <div id="flagged-links" class="table-wrap" aria-live="polite">
+        <div class="loading-row"><span class="spinner"></span>Đang tải…</div>
+      </div>
+    </section>
+    <section id="protection-grid" class="protection-grid" aria-label="Danh sách lớp bảo vệ"></section>
+    <div class="security-callout">Nếu gặp link đáng ngờ, không tiếp tục truy cập. Hệ thống có thể từ chối domain trong blocklist, giới hạn request bằng HTTP 429 và yêu cầu xác nhận với link bị đánh dấu đáng ngờ.</div>
+  </main>
+  <footer class="site-footer" data-site-footer></footer>
+  <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

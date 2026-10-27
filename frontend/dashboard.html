@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Theo dõi lượt truy cập và hiệu quả liên kết LinkPulse.">
+  <title>Thống kê thời gian thực — LinkPulse</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Dashboard gom dữ liệu bằng dashboard.js và cập nhật theo polling. -->
+  <script type="module" src="/js/dashboard.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Bỏ qua điều hướng</a>
+  <header class="site-header" data-site-header></header>
+  <main id="main" class="container main-content dashboard-content">
+    <div class="page-heading ph">
+      <div>
+        <h1>Thống kê thời gian thực</h1>
+        <p class="sm">Tự động làm mới mỗi 5 giây · Dữ liệu <span id="range-label">60 phút</span> gần nhất</p>
+      </div>
+      <div class="ctl">
+        <span class="live" id="connection-state" role="status" aria-live="polite">Đang tải…</span>
+        <div class="seg" id="range-select" role="group" aria-label="Khoảng thời gian">
+          <button type="button" data-range="15m" aria-pressed="false">15 phút</button>
+          <button type="button" data-range="1h" class="on" aria-pressed="true">1 giờ</button>
+          <button type="button" data-range="24h" aria-pressed="false">24 giờ</button>
+        </div>
+        <label class="sr-only" for="link-select">Lọc theo liên kết</label>
+        <select id="link-select" class="control">
+          <option value="">Tất cả link của tôi</option>
+        </select>
+      </div>
+    </div>
+    <nav id="detail-breadcrumb" class="breadcrumb" aria-label="Đường dẫn" hidden>
+      <a href="/links.html">← Tất cả link</a>
+    </nav>
+    <div id="dashboard-notice" class="notice notice-error dashboard-notice" role="status" aria-live="polite" hidden>
+      <div class="notice-content"></div>
+      <button class="btn btn-danger btn-small" id="refresh-button" type="button">Thử lại</button>
+    </div>
+    <!-- Các vùng chart/table được JS cập nhật từ cùng một response thống kê. -->
+    <section class="g4" aria-label="Chỉ số tổng quan" id="metrics">
+      <article class="surface kp"><div class="l">Tổng lượt click</div><div class="v skeleton" aria-label="Đang tải"></div><div class="d" data-delta="clicks">Trong khoảng thời gian đã chọn</div><span class="ic ch" aria-hidden="true">⌁</span></article>
+      <article class="surface kp"><div class="l">Click / phút</div><div class="v skeleton" aria-label="Đang tải"></div><div class="d" data-delta="rate">Trung bình trong khoảng chọn</div><span class="ic cg" aria-hidden="true">ϟ</span></article>
+      <article class="surface kp"><div class="l">Khách truy cập duy nhất</div><div class="v skeleton" aria-label="Đang tải"></div><div class="d" data-delta="visitors">Ước tính theo IP đã băm</div><span class="ic cb" aria-hidden="true">◎</span></article>
+      <article class="surface kp"><div class="l">Link bị gắn cờ</div><div class="v skeleton" aria-label="Đang tải"></div><div class="d" data-delta="flagged">Nghi ngờ hoặc bị chặn</div><span class="ic cr" aria-hidden="true">◇</span></article>
+    </section>
+    <div id="anomaly-notice" class="notice notice-warning anomaly-notice" role="status" aria-live="polite" hidden>
+      <div class="notice-content"></div>
+    </div>
+    <section class="g2" aria-label="Lượt click và thiết bị">
+      <article class="surface chart-panel">
+        <div class="panel-heading">
+          <div><h2>Click theo thời gian</h2><p class="sm">Số lượt click mỗi <span id="bucket-label">phút</span></p></div>
+          <div class="lgd" aria-label="Chú giải"><span><i class="legend-valid"></i>Click hợp lệ</span><span><i class="legend-bot"></i>Bot bị loại</span></div>
+        </div>
+        <div id="timeline-chart" class="chart-wrap" aria-live="polite"><div class="loading-row"><span class="spinner"></span>Đang tải dữ liệu…</div></div>
+      </article>
+      <article class="surface chart-panel">
+        <h2>Thiết bị truy cập</h2>
+        <div id="devices-chart" class="chart-wrap"></div>
+      </article>
+    </section>
+    <section class="g3" aria-label="Link phổ biến, quốc gia và nguồn giới thiệu">
+      <article class="surface chart-panel"><h2>Link nhiều click nhất</h2><p class="sm">Top 5 trong khoảng đã chọn</p><div id="top-links-chart" class="chart-wrap"></div></article>
+      <article class="surface chart-panel"><h2>Quốc gia</h2><p class="sm">Theo CloudFront-Viewer-Country</p><div id="countries-chart" class="chart-wrap"></div></article>
+      <article class="surface chart-panel"><h2>Nguồn giới thiệu</h2><p class="sm">Theo header Referer</p><div id="referrers-chart" class="chart-wrap"></div></article>
+    </section>
+    <section class="surface tc section-spacer">
+      <div class="panel-heading table-heading"><div><h2>Click gần nhất</h2><p class="sm">IP được băm — không lưu địa chỉ gốc</p></div></div>
+      <div id="recent-clicks" class="table-wrap">
+        <div class="loading-row"><span class="spinner"></span>Đang tải danh sách…</div>
+      </div>
+    </section>
+    <div class="security-callout">Dữ liệu click được cập nhật theo luồng xử lý gần thời gian thực; thời gian cập nhật thực tế phụ thuộc độ trễ xử lý và API.</div>
+  </main>
+  <footer class="site-footer" data-site-footer></footer>
+  <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

@@ -1,2 +1,2 @@
-// Để trống cho tới khi nhóm chốt endpoint ở tuần 2.
+// Prototype tuần 1 chỉ chạy mock; giữ URL trống để tránh gọi nhầm API thật.
 const API_BASE_URL = "";
