@@ -11,6 +11,7 @@ const resultNote = document.querySelector("#result-note");
 const copyButton = document.querySelector("#copy-button");
 const copyFeedback = document.querySelector("#copy-feedback");
 const scenarioFromQuery = new URLSearchParams(window.location.search).get("scenario");
+// Chỉ cho phép các kịch bản có fixture; tham số lạ sẽ dùng luồng thành công.
 const supportedScenarios = new Set([
   "ok",
   "duplicate",
@@ -36,6 +37,7 @@ function createOwnerId() {
   });
 }
 
+// Giữ cùng một owner ID sau khi tải lại để prototype mô phỏng đúng "Link của tôi".
 function getOwnerId() {
   try {
     const storedOwnerId = window.localStorage.getItem("linkpulse-owner-id");
@@ -95,6 +97,7 @@ function validateForm() {
       const parsedUrl = new URL(rawUrl);
       const isHttp = parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:";
       const host = parsedUrl.hostname.toLowerCase();
+      // Link của chính dịch vụ bị từ chối để tránh tạo vòng lặp redirect.
       const isOwnDomain = host === "linkpulse.vn" || host.endsWith(".linkpulse.vn");
       if (!isHttp || isOwnDomain) {
         setFieldError(
@@ -197,6 +200,7 @@ form.addEventListener("submit", async (event) => {
   hideMessage();
   setBusy(true);
   try {
+    // shorten() trả fixture sau độ trễ giả lập; prototype không gọi API thật.
     const result = await shorten(payload, scenario, ownerId);
     if (result.status === 200 || result.status === 201) {
       showResult(result.body);

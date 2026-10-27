@@ -34,7 +34,7 @@ const MOCK_SCENARIOS = {
   },
 };
 
-// Mô phỏng API với độ trễ ngẫu nhiên 600–900 ms, không gửi request ra mạng.
+// Mô phỏng API với độ trễ 600–900 ms để demo trạng thái chờ mà không gửi request ra mạng.
 function shorten(payload, scenario, ownerId) {
   return new Promise((resolve, reject) => {
     const delay = 600 + Math.floor(Math.random() * 301);

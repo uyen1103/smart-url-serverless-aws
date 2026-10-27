@@ -1,0 +1,33 @@
+{
+  "code": "promo88",
+  "updated_at": "2026-10-27T14:00:00Z",
+  "from": "2026-10-27T13:00:00Z",
+  "to": "2026-10-27T14:00:00Z",
+  "granularity": "minute",
+  "total_clicks": 2200,
+  "bot_clicks": 412,
+  "unique_visitors": 178,
+  "avg_clicks_per_minute": 36.7,
+  "link": {
+    "code": "promo88",
+    "short_url": "https://linkpulse.vn/promo88",
+    "long_url": "https://example.com/promo",
+    "clicks": 2200,
+    "created_at": "2026-10-21T07:00:00Z",
+    "expires_at": null,
+    "max_clicks": null,
+    "status": "suspicious"
+  },
+  "timeline": [
+    { "bucket": "2026-10-27T13:51:00Z", "clicks": 24, "bot_clicks": 3 },
+    { "bucket": "2026-10-27T13:52:00Z", "clicks": 29, "bot_clicks": 4 },
+    { "bucket": "2026-10-27T13:53:00Z", "clicks": 31, "bot_clicks": 5 },
+    { "bucket": "2026-10-27T13:54:00Z", "clicks": 162, "bot_clicks": 66 },
+    { "bucket": "2026-10-27T13:55:00Z", "clicks": 190, "bot_clicks": 87 }
+  ],
+  "countries": [{ "name": "VN", "clicks": 1500 }, { "name": "US", "clicks": 300 }],
+  "devices": [{ "name": "mobile", "clicks": 1000 }, { "name": "desktop", "clicks": 500 }, { "name": "bot", "clicks": 412 }],
+  "browsers": [{ "name": "Chrome", "clicks": 1000 }, { "name": "Other", "clicks": 412 }],
+  "referrers": [{ "name": "direct", "clicks": 900 }, { "name": "facebook.com", "clicks": 700 }],
+  "recent_clicks": []
+}

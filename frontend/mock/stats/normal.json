@@ -1,0 +1,57 @@
+{
+  "code": null,
+  "updated_at": "2026-10-27T14:00:00Z",
+  "from": "2026-10-27T13:00:00Z",
+  "to": "2026-10-27T14:00:00Z",
+  "granularity": "minute",
+  "total_clicks": 1284,
+  "bot_clicks": 84,
+  "unique_visitors": 402,
+  "avg_clicks_per_minute": 21.4,
+  "flagged_links": 2,
+  "timeline": [
+    { "bucket": "2026-10-27T13:01:00Z", "clicks": 12, "bot_clicks": 1 },
+    { "bucket": "2026-10-27T13:02:00Z", "clicks": 16, "bot_clicks": 2 },
+    { "bucket": "2026-10-27T13:03:00Z", "clicks": 9, "bot_clicks": 0 },
+    { "bucket": "2026-10-27T13:04:00Z", "clicks": 28, "bot_clicks": 6 },
+    { "bucket": "2026-10-27T13:05:00Z", "clicks": 21, "bot_clicks": 2 },
+    { "bucket": "2026-10-27T13:06:00Z", "clicks": 18, "bot_clicks": 1 },
+    { "bucket": "2026-10-27T13:07:00Z", "clicks": 32, "bot_clicks": 8 },
+    { "bucket": "2026-10-27T13:08:00Z", "clicks": 24, "bot_clicks": 3 },
+    { "bucket": "2026-10-27T13:09:00Z", "clicks": 19, "bot_clicks": 2 },
+    { "bucket": "2026-10-27T13:10:00Z", "clicks": 27, "bot_clicks": 4 }
+  ],
+  "top_links": [
+    { "code": "khuyen-mai-tet", "clicks": 640 },
+    { "code": "aB3xY9k", "clicks": 410 },
+    { "code": "tuyen-dung", "clicks": 234 }
+  ],
+  "countries": [
+    { "name": "VN", "clicks": 900 },
+    { "name": "US", "clicks": 150 },
+    { "name": "SG", "clicks": 90 },
+    { "name": "XX", "clicks": 60 }
+  ],
+  "devices": [
+    { "name": "mobile", "clicks": 750 },
+    { "name": "desktop", "clicks": 430 },
+    { "name": "tablet", "clicks": 34 },
+    { "name": "bot", "clicks": 70 }
+  ],
+  "browsers": [
+    { "name": "Chrome", "clicks": 700 },
+    { "name": "Safari", "clicks": 300 },
+    { "name": "Firefox", "clicks": 120 },
+    { "name": "Edge", "clicks": 80 }
+  ],
+  "referrers": [
+    { "name": "facebook.com", "clicks": 400 },
+    { "name": "direct", "clicks": 350 },
+    { "name": "google.com", "clicks": 210 }
+  ],
+  "recent_clicks": [
+    { "timestamp": "2026-10-27T13:59:41Z", "code": "khuyen-mai-tet", "country": "VN", "device": "mobile", "browser": "Chrome", "referrer": "facebook.com", "result": "valid" },
+    { "timestamp": "2026-10-27T13:59:12Z", "code": "aB3xY9k", "country": "US", "device": "desktop", "browser": "Firefox", "referrer": "direct", "result": "valid" },
+    { "timestamp": "2026-10-27T13:58:52Z", "code": "promo88", "country": "VN", "device": "bot", "browser": "Other", "referrer": "direct", "result": "bot" }
+  ]
+}

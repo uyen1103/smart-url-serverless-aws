@@ -1,0 +1,4 @@
+{
+  "status": 409,
+  "body": { "error": { "code": "alias_taken", "message": "Alias này đã được sử dụng." } }
+}

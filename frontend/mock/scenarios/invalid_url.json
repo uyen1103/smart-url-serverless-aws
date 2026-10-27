@@ -1,0 +1,4 @@
+{
+  "status": 400,
+  "body": { "error": { "code": "invalid_url", "message": "URL không hợp lệ." } }
+}

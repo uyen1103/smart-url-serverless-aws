@@ -1,0 +1,11 @@
+{
+  "status": 201,
+  "body": {
+    "code": "aB3kLm9",
+    "short_url": "https://linkpulse.vn/aB3kLm9",
+    "long_url": "https://example.com/article",
+    "created": true,
+    "expires_at": null,
+    "max_clicks": null
+  }
+}

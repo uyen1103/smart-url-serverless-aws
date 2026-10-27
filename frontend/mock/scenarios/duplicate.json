@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "body": {
+    "code": "khuyen-mai-tet",
+    "short_url": "https://linkpulse.vn/khuyen-mai-tet",
+    "long_url": "https://example.com/khuyen-mai",
+    "created": false,
+    "expires_at": null,
+    "max_clicks": null
+  }
+}
