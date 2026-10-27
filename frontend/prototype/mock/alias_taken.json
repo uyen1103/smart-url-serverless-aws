@@ -1,0 +1,7 @@
+{
+  "status": 409,
+  "error": {
+    "code": "alias_taken",
+    "message": "Alias này đã được sử dụng."
+  }
+}

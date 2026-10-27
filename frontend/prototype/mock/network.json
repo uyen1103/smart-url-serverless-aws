@@ -1,0 +1,7 @@
+{
+  "status": 0,
+  "error": {
+    "code": "network_error",
+    "message": "Không thể kết nối tới máy chủ."
+  }
+}
