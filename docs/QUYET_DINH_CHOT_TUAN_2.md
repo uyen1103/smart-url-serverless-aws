@@ -1,8 +1,5 @@
 # LinkPulse — Quyết định đã chốt (áp dụng cho cả nhóm)
 
-> Đặt tại `docs/QUYET_DINH_CHOT_TUAN_2.md`. Dán nguyên file này vào đầu mỗi issue tuần 2.
->
-> **Cập nhật lịch:** không chia ngày cho từng việc. Mỗi người làm xong việc của mình thì báo nhóm; chỉ việc người khác đang chờ mới cần làm sớm và được ghi rõ "chờ ai" (mục 13 và `KE_HOACH_TUAN_2.md`). Ngày cố định duy nhất là **hạn cuối toàn nhóm: Thứ Tư 4/11**. Các quyết định về chi phí, kiến trúc và quyền không đổi.
 
 **Đề tài:** hệ thống rút gọn liên kết thông minh với phân tích lưu lượng thời gian thực và chống lạm dụng trên AWS, kiến trúc serverless (CloudFront, S3, API Gateway, Lambda, DynamoDB, CloudWatch).
 
@@ -56,17 +53,15 @@
 
 12. **Git:** nhánh `feature/<số issue>-<việc>` hoặc `bugfix/<số issue>-<việc>`; commit `type(scope): mô tả` ≤ 72 ký tự; Pull Request có `Closes #<số issue>`, ít nhất 1 người ở module khác review. Mỗi việc trong PR phải kèm bằng chứng (lệnh đã chạy và đầu ra rút gọn, và ảnh chụp AWS Console của tài nguyên liên quan khi có deploy); không có bằng chứng thì xem như chưa làm.
 
-13. **Thứ tự làm việc (không chia ngày).** Việc không chờ ai thì làm ngay, tự chọn thứ tự, xong việc nào báo nhóm việc đó. Chỉ chuỗi dưới đây phải đúng thứ tự: bước sau bắt đầu khi bước trước báo xong.
+13. **Thứ tự làm việc.** Việc không chờ ai thì làm ngay, xong việc nào báo nhóm việc đó. Chỉ chuỗi dưới đây phải đúng thứ tự: bước sau bắt đầu khi bước trước báo xong.
     1. TV5 sửa quyền IAM và chốt Region cùng TV1; TV3 mở PR `BillingMode`/`EnablePitr`; TV1 đẩy `conftest.py` và xóa test cũ; TV5 deploy thử edge. (Bốn việc này người khác đang chờ nên làm trước.)
     2. TV1 merge PR của TV3, deploy backend lần 1, gửi `ApiDomain`.
     3. TV5 deploy edge thật, gửi domain CloudFront, tên bucket, distribution ID.
     4. TV1 deploy backend lần 2 với domain CloudFront.
     5. TV2 deploy giao diện; TV4 kiểm chứng và đo độ trễ; TV5 kiểm thử WAF và lớp chống lạm dụng; TV3 kiểm tra throttle.
     6. Cả nhóm chạy ma trận đầu-cuối, sửa lỗi, PR, review.
-    7. Họp demo, tick checklist.
 
-    Bị kẹt ở bước nào thì báo cả nhóm ngay khi biết, để người sau không phải chờ trong im lặng. Muốn họp ngắn giữa chừng thì cả nhóm tự hẹn, không bắt buộc.
-
+    Bị kẹt ở bước nào thì báo cả nhóm ngay khi biết, để người sau không phải chờ trong im lặng.
 14. **Lưu ý free:** HTTP API chỉ miễn phí 1 triệu lượt gọi/tháng trong 12 tháng đầu (hoặc bằng credit tài khoản mới); nếu quá thì vài nghìn request chỉ vài cent. Không chạy tải lớn lên AWS: tải lớn chạy trên moto hoặc DynamoDB Local. Xong mỗi đợt thử không dùng nữa thì `sam delete`. Giữ tối đa 10 CloudWatch alarm và 2 AWS Budget.
 
 15. **Hosting trên AWS: cả nhóm cùng làm, mỗi người một phần, trên MỘT tài khoản AWS chung.** TV5 là người cấp quyền: chạy `scripts/setup_aws_foundation.sh` để tạo IAM user riêng (quyền tối thiểu, bắt buộc MFA) cho từng thành viên; không ai dùng tài khoản root. Phân công hạ tầng:
@@ -78,7 +73,7 @@
 
     Người nào deploy phần nào thì chụp ảnh AWS Console của phần đó làm bằng chứng cho báo cáo.
 
-16. **Tài khoản kiểu Free plan mới bị cố định Region theo project** (xem `docs/backend_research.md` mục 6.2: hello-world của TV1 phải deploy ở `ap-southeast-2`, không phải `ap-southeast-1`). Chốt ở bước 1 của mục 13: TV5 và TV1 xem Region tại settings.aws.com (mục Project) của tài khoản dùng chung và thống nhất MỘT Region cho backend; mọi thành viên `aws configure` đúng Region đó. Stack edge của CloudFront/WAF ở `us-east-1` có thể bị tài khoản Free plan chặn: TV5 deploy thử edge sớm; nếu bị chặn thì báo cả nhóm để quyết định (ví dụ bỏ WAF và trình bày WAF bằng thiết kế và tài liệu, hoặc nâng cấp tài khoản sang gói trả phí chỉ khi cả nhóm đồng ý).
+16. **Tài khoản kiểu Free plan mới bị cố định Region theo project** (xem `docs/backend_research.md` mục 6.2: hello-world của TV1 phải deploy ở `ap-southeast-2`, không phải `ap-southeast-1`). Chốt ở bước 1 của mục 13: TV5 và TV1 xem Region tại settings.aws.com (mục Project) của tài khoản dùng chung và thống nhất MỘT Region cho backend; mọi thành viên `aws configure` đúng Region đó. Stack edge của CloudFront/WAF ở `us-east-1` có thể bị tài khoản Free plan chặn: TV5 deploy thử edge sớm; nếu bị chặn thì báo cả nhóm để quyết định (ví dụ bỏ WAF và trình bày WAF bằng thiết kế và tài liệu).
 
 17. **Quyền IAM để deploy được:** chính sách dev trong `scripts/setup_aws_foundation.sh` hiện chỉ cho CloudFormation (stack `linkpulse-*`), Lambda, API Gateway, DynamoDB, S3 `linkpulse-*`, log và `iam:PassRole`; **chưa có** CloudFront, SSM, SQS, tạo IAM role cho Lambda (SAM cần), `cloudwatch:PutMetricAlarm`, WAF. Nên cả nhóm dùng IAM user theo script sẽ bị `AccessDenied` khi deploy. **Chốt:** TV5 cập nhật chính sách ở bước 1 của mục 13, trước khi ai deploy:
     - TV1 và TV5 (người chạy `sam deploy` và deploy edge) có `PowerUserAccess` cộng quyền tạo/xóa IAM role mà SAM cần (hoặc `AdministratorAccess` có MFA cho hai người này);
@@ -87,7 +82,7 @@
 
     Đặt tên stack bắt đầu bằng `linkpulse-` nếu vẫn giữ chính sách cũ. Không dùng root.
 
-18. **Thứ tự sửa `backend/template.yaml`:** TV3 merge PR `BillingMode`/`EnablePitr` trước; TV1 sửa `ErrorPageMode`, tham số ngưỡng, LogGroup sau đó và rebase. Không ai khác sửa file này trong tuần 2. Mỗi tài liệu và thư mục có một chủ (xem `KE_HOACH_TUAN_2.md`, mục "Quy tắc tránh xung đột file").
+18. **Thứ tự sửa `backend/template.yaml`:** TV3 merge PR `BillingMode`/`EnablePitr` trước; TV1 sửa `ErrorPageMode`, tham số ngưỡng, LogGroup sau đó và rebase. Không ai khác sửa file này trong tuần 2. Mỗi tài liệu và thư mục có một chủ .
 
 19. **Region của stack edge:** khi `EnableWaf=false` và không dùng domain riêng, stack edge không bắt buộc ở `us-east-1`; TV5 thử deploy cùng Region backend trước. Chỉ lần kiểm thử WAF mới cần `us-east-1` (nếu tài khoản cho phép), theo mục 16.
 
