@@ -4,3 +4,4 @@ pytest
 moto[dynamodb,ssm]
 cfn-lint
 aws-sam-cli
+pyyaml
