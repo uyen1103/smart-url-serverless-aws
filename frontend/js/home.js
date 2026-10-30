@@ -32,6 +32,7 @@ const resultCard = document.querySelector("#result-card");
 let lastSubmission = null;
 let countdownTimer = 0;
 let turnstileToken = "";
+let turnstileWidgetId = null;
 
 function setFieldError(input, errorNode, message) {
   setText(errorNode, message);
@@ -187,6 +188,10 @@ async function submitForm(input = collectSubmission()) {
     handleApiError(error);
   } finally {
     setBusy(submitButton, false);
+    if (TURNSTILE_SITE_KEY && turnstileWidgetId !== null && window.turnstile) {
+      window.turnstile.reset(turnstileWidgetId);
+    }
+    turnstileToken = "";
     if (Number(submitButton.dataset.rateLimitedUntil) > Date.now()) {
       submitButton.disabled = true;
     } else {
@@ -251,7 +256,7 @@ if (TURNSTILE_SITE_KEY) {
     }
     const container = el("div", { id: "turnstile-widget" });
     verificationArea.prepend(container);
-    window.turnstile.render(container, {
+    turnstileWidgetId = window.turnstile.render(container, {
       sitekey: TURNSTILE_SITE_KEY,
       callback: (token) => { turnstileToken = token; },
       "expired-callback": () => { turnstileToken = ""; },
