@@ -23,7 +23,7 @@ Giao diện tuân theo các token trong `frontend/css/tokens.css`; bố cục đ
 |---|---|
 | `frontend/css/tokens.css` | Màu, typography, spacing và bo góc. |
 | `frontend/css/style.css` | Kiểu dùng chung, bố cục trang chủ/dashboard và responsive. |
-| `frontend/js/config.js` | API base URL, chế độ mock, chu kỳ polling và các cờ cấu hình. |
+| `frontend/js/config.js` | API base URL, chế độ mock, domain public, liên hệ, Turnstile và chu kỳ polling. |
 | `frontend/js/api.js` | API client, chuẩn hóa lỗi, timeout, owner header và mock handlers. |
 | `frontend/js/owner.js` | Sinh UUID owner và lưu trong `localStorage`. |
 | `frontend/js/dom.js` | Tạo phần tử an toàn, gán text, kiểm tra URL attribute và tiện ích DOM. |
@@ -34,6 +34,7 @@ Giao diện tuân theo các token trong `frontend/css/tokens.css`; bố cục đ
 | `frontend/js/links.js` | Danh sách, tìm kiếm, lọc, phân trang và xác nhận xóa. |
 | `frontend/js/warning.js`, `error.js` | Hiển thị các trạng thái cảnh báo/lỗi từ query string. |
 | `frontend/mock/` | Fixture link, thống kê và phản hồi mô phỏng; không phải dữ liệu backend. |
+| `frontend/deploy.ps1` | Preview/sync S3 và invalidation CloudFront có kiểm soát. |
 
 ## 3. Hợp đồng tích hợp API
 
@@ -54,20 +55,29 @@ Các lỗi được xử lý dựa trên `error.code`, không dựa vào nội d
 |---|---|
 | `400 invalid_url` | Thông báo dưới trường URL. |
 | `400 blocked_domain` | Thông báo domain không được chấp nhận cạnh URL. |
+| `400 captcha_failed` | Thông báo xác minh chống lạm dụng không thành công. |
+| `400 invalid_expires_in` | Thông báo thời hạn liên kết không hợp lệ. |
+| `400 invalid_request` | Thông báo yêu cầu không hợp lệ. |
 | `409 alias_taken` | Thông báo cạnh trường alias. |
+| `404 not_found` | Thông báo không tìm thấy liên kết. |
+| `410 link_expired` | Thông báo link đã hết hạn. |
+| `410 max_clicks_reached` | Thông báo link đã đạt giới hạn click. |
+| `403 link_blocked` | Thông báo link đã bị chặn. |
+| `403 link_suspicious` | Cảnh báo link cần được xem xét. |
 | `429 rate_limited` | Cảnh báo vàng và đếm ngược từ header `Retry-After`. |
+| `5xx internal_error` | Thông báo dịch vụ tạm thời không khả dụng. |
 | `5xx`, timeout, mất mạng | Thông báo lỗi và nút thử lại; giữ dữ liệu người dùng. |
 | Phản hồi không phải JSON | Chuẩn hóa thành lỗi phản hồi không hợp lệ; không giả làm kết quả thành công. |
 
 **Cần phối hợp TV1 trước khi chuyển khỏi mock:** xác nhận API đã triển khai đúng base path `/api`, schema, header owner, CORS (nếu khác origin), phản hồi `Retry-After`, status redirect/error và dữ liệu thống kê. Không đổi frontend sang gọi production khi chưa có endpoint môi trường thử nghiệm.
 
-**Sai khác cần xử lý trước tích hợp thật:** dashboard hiện yêu cầu `GET /links` với `limit: 100` để tạo danh sách lọc, trong khi `api_spec.yaml` giới hạn `limit` tối đa 50. Cần xác nhận với TV1 cách lấy đủ mã link (chẳng hạn phân trang) rồi điều chỉnh ở bước tích hợp API; mock hiện không áp dụng giới hạn này.
+Dashboard lấy danh sách lọc bằng nhiều request `limit: 50`, tối đa 4 trang và chống cursor lặp; nếu còn dữ liệu sẽ thông báo giới hạn 200 link.
 
 **Cần phối hợp TV4/TV5:** TV4 xác nhận nghĩa của các chỉ số/timestamp và cách xử lý click bot; TV5 xác nhận CloudFront behaviors cho `/api/*`, trang tĩnh và `/{code}`. Không cache API hoặc redirect trừ khi nhóm thống nhất cấu hình cụ thể.
 
 ## 4. Mock và chạy thử giao diện
 
-Mặc định hiện tại `USE_MOCK` đang bật trong `frontend/js/config.js`; các request trình duyệt vì vậy chưa gọi API thật. Trang dashboard cũng dùng fixture. Thay đổi `API_BASE_URL` không tắt mock; chỉ chuyển `USE_MOCK` sau khi API thử nghiệm sẵn sàng.
+Mặc định hiện tại `USE_MOCK` đang bật trong `frontend/js/config.js`; các request trình duyệt vì vậy chưa gọi API thật. `?mock=1` chỉ có tác dụng trên localhost/127.0.0.1. Khi deploy, đổi `USE_MOCK=false` và chỉ điền `TURNSTILE_SITE_KEY` sau khi TV5 bật secret backend đồng thời.
 
 Chạy từ thư mục gốc repository:
 
@@ -93,7 +103,7 @@ Kịch bản mock rút gọn: `ok`, `duplicate`, `invalid_url`, `blocked_domain`
 
 ## 5. Deploy và điều kiện còn chờ
 
-Có script hỗ trợ triển khai frontend: `frontend/deploy.ps1` cho PowerShell và `frontend/deploy.sh` cho Bash. Script yêu cầu bucket riêng cho frontend. Mặc định chạy ở chế độ xem trước; chỉ upload khi chủ động truyền `-Execute` (PowerShell) hoặc `EXECUTE=true` (Bash). Có thể yêu cầu invalidation bằng `-Invalidate` hoặc `INVALIDATE=true`, kèm distribution ID.
+Có script hỗ trợ triển khai frontend: `frontend/deploy.ps1` cho PowerShell và `frontend/deploy.sh` cho Bash. Đọc hướng dẫn ngắn tại [README_DEPLOY.md](../frontend/README_DEPLOY.md); PowerShell dùng đúng tham số `-Bucket`, `-DistributionId`, `-Execute`, `-Invalidate`.
 
 Ví dụ PowerShell sau khi TV5 cung cấp bucket/distribution và AWS CLI đã cấu hình:
 

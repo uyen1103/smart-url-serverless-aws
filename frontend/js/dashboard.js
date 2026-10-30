@@ -190,11 +190,27 @@ async function loadLinkOptions() {
     return;
   }
   try {
-    const response = await getLinks({ limit: 100 });
-    const links = Array.isArray(response.data?.items) ? response.data.items : [];
-    for (const link of links) {
+    const links = [];
+    const seenCursors = new Set();
+    let cursor = "";
+    let hasMore = false;
+    for (let page = 0; page < 4; page += 1) {
+      const response = await getLinks({ limit: 50, ...(cursor ? { cursor } : {}) });
+      const pageLinks = Array.isArray(response.data?.items) ? response.data.items : [];
+      links.push(...pageLinks);
+      const nextCursor = response.data?.next_cursor || "";
+      if (!nextCursor || seenCursors.has(nextCursor)) break;
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+      hasMore = page === 3;
+    }
+    for (const link of links.slice(0, 200)) {
       const option = el("option", { value: String(link.code ?? "") }, `/${String(link.code ?? "")}`);
       linkSelect.append(option);
+    }
+    if (hasMore) {
+      const hint = el("small", { className: "field-hint" }, "Chỉ hiển thị 200 link gần nhất; xem đầy đủ ở trang Link của tôi");
+      linkSelect.after(hint);
     }
   } catch (error) {
     notice.hidden = false;

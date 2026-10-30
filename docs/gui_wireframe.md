@@ -10,7 +10,7 @@ Phân tích công nghệ, hosting và luồng frontend: [frontend_research.md](.
 - [Tạo link và trạng thái form](#tạo-link-và-trạng-thái-form)
 - [Dashboard thống kê](#dashboard-thống-kê)
 - [Link của tôi và xóa link](#link-của-tôi-và-xóa-link)
-- [Quản trị chống lạm dụng](#quản-trị-chống-lạm-dụng)
+- [Chống lạm dụng (chỉ xem)](#chống-lạm-dụng-chỉ-xem)
 - [Cảnh báo link](#cảnh-báo-link)
 - [Trang lỗi link](#trang-lỗi-link)
 - [Quy ước tích hợp](#quy-ước-tích-hợp)
@@ -134,21 +134,13 @@ Hộp thoại nêu link sắp xóa và cảnh báo thao tác không thể hoàn 
 
 ---
 
-## Quản trị chống lạm dụng
+## Chống lạm dụng (chỉ xem)
 
-### 07 — Hàng đợi và lớp bảo vệ
+### 07 — Chống lạm dụng (chỉ xem)
 
-![07 — Quản trị chống lạm dụng](./screenshots/07-abuse-admin.png)
+Trang chỉ xem danh sách link đáng ngờ hoặc bị chặn, số lượng tổng hợp và các lớp bảo vệ đang áp dụng.
 
-Trang quản trị trình bày số link bị chặn tự động, link chờ xem xét, request bị WAF chặn và số lần vượt rate limit. Hàng đợi có bộ lọc **Tất cả**, **Nghi ngờ**, **Đã chặn**; mỗi mục hiển thị mã link, lý do, thời điểm, trạng thái và hành động **Chặn**, **Bỏ qua** hoặc **Gỡ chặn**.
-
-Danh sách lớp bảo vệ gồm AWS WAF, rate limit theo IP, validate URL, blocklist domain, Safe Browsing/URLhaus và phát hiện bất thường. Trạng thái bật/tắt hiển thị trong ảnh là trạng thái minh họa; quyền thay đổi phải được kiểm soát ở backend.
-
-### 07b — Sau khi chặn link
-
-![07b — Link bị chặn và có thể gỡ chặn](./screenshots/07b-abuse-blocked.png)
-
-Banner xác nhận link đã bị chặn và cho biết người truy cập sẽ thấy trang cảnh báo 403. Link đã chặn có thể được gỡ chặn từ hàng đợi.
+Danh sách lớp bảo vệ gồm validate URL, rate limit, blocklist domain, phát hiện link đáng ngờ và AWS WAF nếu đã được bật. Không có nút chặn, bỏ qua hoặc gỡ chặn; mọi thay đổi trạng thái do backend/security xử lý.
 
 ---
 
