@@ -5,6 +5,22 @@ Description: >
   và chống lạm dụng, kiến trúc serverless (HTTP API + Lambda + DynamoDB).
 
 Parameters:
+  BillingMode:
+    Type: String
+    Default: PROVISIONED
+    AllowedValues:
+      - PROVISIONED
+      - PAY_PER_REQUEST
+    Description: Chế độ tính phí DynamoDB; mặc định PROVISIONED để dùng mức miễn phí
+
+  EnablePitr:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Bật Point-in-Time Recovery cho bảng urls (mặc định tắt)
+
   BaseUrl:
     Type: String
     Default: https://linkpulse.vn
@@ -47,6 +63,7 @@ Parameters:
     Description: Số lượt redirect tối đa mỗi IP mỗi phút (0 = tắt)
 
 Conditions:
+  UseProvisionedBilling: !Equals [!Ref BillingMode, PROVISIONED]
   HasTurnstile: !Not [!Equals [!Ref TurnstileSecretParam, '']]
   HasSafeBrowsing: !Not [!Equals [!Ref SafeBrowsingKeyParam, '']]
   HasOriginVerify: !Not [!Equals [!Ref OriginVerifySecretParam, '']]
@@ -239,11 +256,16 @@ Resources:
     Properties:
       MessageRetentionPeriod: 1209600               # 14 ngày
 
-  # ------------------------------------------------------------------ DynamoDB (on-demand)
+  # ------------------------------------------------------------------ DynamoDB
   UrlsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 6
+          WriteCapacityUnits: 5
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: short_code, AttributeType: S}
         - {AttributeName: owner_id, AttributeType: S}
@@ -256,12 +278,23 @@ Resources:
             - {AttributeName: owner_id, KeyType: HASH}
             - {AttributeName: created_at, KeyType: RANGE}
           Projection: {ProjectionType: ALL}
-      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+          ProvisionedThroughput: !If
+            - UseProvisionedBilling
+            - ReadCapacityUnits: 2
+              WriteCapacityUnits: 4
+            - !Ref AWS::NoValue
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !Equals [!Ref EnablePitr, 'true']
 
   ClicksTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 1
+          WriteCapacityUnits: 4
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: short_code, AttributeType: S}
         - {AttributeName: sk, AttributeType: S}
@@ -274,7 +307,12 @@ Resources:
   StatsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 10
+          WriteCapacityUnits: 4
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: scope, AttributeType: S}
         - {AttributeName: sk, AttributeType: S}
@@ -286,7 +324,12 @@ Resources:
   RateLimitsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 1
+          WriteCapacityUnits: 5
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: pk, AttributeType: S}
       KeySchema:
@@ -296,7 +339,12 @@ Resources:
   BlocklistTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 3
+          WriteCapacityUnits: 1
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: domain, AttributeType: S}
       KeySchema:
