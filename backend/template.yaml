@@ -64,6 +64,7 @@ Parameters:
 
 Conditions:
   UseProvisionedBilling: !Equals [!Ref BillingMode, PROVISIONED]
+  PitrEnabled: !Equals [!Ref EnablePitr, 'true']
   HasTurnstile: !Not [!Equals [!Ref TurnstileSecretParam, '']]
   HasSafeBrowsing: !Not [!Equals [!Ref SafeBrowsingKeyParam, '']]
   HasOriginVerify: !Not [!Equals [!Ref OriginVerifySecretParam, '']]
@@ -284,7 +285,7 @@ Resources:
               WriteCapacityUnits: 4
             - !Ref AWS::NoValue
       PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: !Equals [!Ref EnablePitr, 'true']
+        PointInTimeRecoveryEnabled: !If [PitrEnabled, true, false]
 
   ClicksTable:
     Type: AWS::DynamoDB::Table
