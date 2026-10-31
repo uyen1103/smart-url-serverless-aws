@@ -219,3 +219,5 @@ __marimo__/
 # Frontend dependencies (if using Node.js)
 node_modules/
 dist/
+
+.vs/
