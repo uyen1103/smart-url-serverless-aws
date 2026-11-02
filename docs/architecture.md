@@ -1,271 +1,277 @@
-# Architecture v1 — Smart URL Serverless (LinkPulse)
+# Architecture — LinkPulse
 
-> **Module:** TV5 tổng hợp từ TV1 (Backend Core), TV3 (Database DynamoDB), TV4 (Analytics/Redirect Worker) · **Issue:** Week 1 / #5
-> **Stack:** `CloudFront + WAF (us-east-1) → API Gateway HTTP API → Lambda Python 3.11 → DynamoDB (urls, clicks, stats_agg, rate_limits, blocklist)` · Redirect `302 + no-store` · Analytics `DynamoDB Streams → click_processor`
-> **Đọc cùng:** `docs/api_spec.yaml` (hợp đồng API), `docs/backend_research.md`, `docs/analytics_research.md`, `docs/click_event_schema.json`, `docs/threat_model.md`, `docs/security_research.md`
-> **Ngày:** 27/10/2026 · **Trạng thái:** v1.0 — kiến trúc mục tiêu Week 2, tương thích prototype Week 1 (`backend/prototype.py`, `backend/template.yaml`)
-
----
-
-## 1. Tổng quan & nguyên tắc
-
-Hệ thống rút gọn liên kết serverless, tối ưu cho **redirect nhanh + rẻ** (traffic đọc lớn) và **tạo link an toàn** (traffic ghi nhỏ nhưng cần validate/anti-abuse nặng).
-
-**Nguyên tắc v1:**
-
-1. **Edge-first:** mọi request qua CloudFront; WAF chặn ở edge (`us-east-1`, scope `CLOUDFRONT`) trước khi chạm origin — vì HTTP API không gắn WAF trực tiếp (TV1 §2).
-2. **Không cache redirect:** `GET /{code}` luôn `302 + Cache-Control: no-store`, CloudFront TTL 0 — mỗi click đều qua server để đếm (TV1 §4, TV4 analytics).
-3. **Ghi cạnh tranh an toàn:** tạo mã bằng `PutItem + ConditionExpression attribute_not_exists(short_code)`; alias và mã tự sinh chung không gian khóa, không cấp lại mã đã xóa (TV1 §3).
-4. **Validate 2 lớp + async scan:** kiểm tra đồng bộ rẻ ở `POST /shorten` (regex/host/own-domain/IP/DNS), quét độc hại nặng (GSB/URLhaus) chạy async + cache verdict (TV5 `security_research.md` §3).
-5. **Analytics tách luồng nóng:** redirect chỉ `GetItem + ghi click` (< 100 ms); tổng hợp qua `DynamoDB Streams (NEW_IMAGE, INSERT-only) → click_processor → stats_agg`; dashboard poll `GET /stats` (TV4).
-6. **Privacy by design:** chỉ lưu `ip_hash` (SHA-256 + salt KMS), không log IP/UA; API không trả PII.
-
-**Region:** workload ở `ap-southeast-1` (Singapore) theo thống nhất nhóm; WAF Web ACL ở `us-east-1`; lưu ý tài khoản Free-plan kiểu mới bị cố định region theo project (TV1 §6.2) — member nào lệch region thì dùng profile riêng, không đổi region chung.
+> **Module:** TV5 · **Issue:** #11 (tuần 2)
+> **Stack:** `CloudFront (+ WAF tùy chọn) → API Gateway HTTP API → Lambda Python 3.11 → DynamoDB`
+> **Đọc cùng:** `docs/api_spec.yaml`, `docs/backend_research.md`, `docs/analytics_research.md`,
+> `docs/database_design.md`, `docs/QUYET_DINH_CHOT_TUAN_2.md`, `docs/threat_model.md`, `docs/security_research.md`
+> **Trạng thái:** mô tả theo code thật trong `backend/src/` và `backend/template.yaml`
 
 ---
 
-## 2. Sơ đồ kiến trúc tổng thể (Mermaid — render trực tiếp trên GitHub)
+## 1. Tổng quan
 
-> File PNG export cho Draw.io/báo cáo: `docs/architecture.png` (xuất từ Mermaid bằng `mmdc` hoặc import `.mmd` vào Draw.io qua plugin Mermaid). Nguồn Mermaid chính là code dưới — sửa ở đây rồi export lại, không sửa PNG tay.
+Hệ thống rút gọn liên kết serverless, tách làm hai phần để mỗi phần tối ưu riêng:
+
+- **Luồng nóng** (`GET /{code}`): đọc một item DynamoDB, trả `302`. Mọi thứ khác đều đẩy ra sau.
+- **Luồng lạnh** (ghi thống kê): ghi click vào bảng `clicks`, DynamoDB Stream kéo `process_clicks`
+  cộng dồn theo phút vào bảng `stats`.
+
+**Nguyên tắc:**
+
+1. **Edge-first.** Mọi request đi qua CloudFront. WAF chặn ở biên trước khi chạm origin.
+2. **Redirect không cache.** `GET /{code}` trả `302 + Cache-Control: no-store`, CloudFront dùng
+   `Managed-CachingDisabled`. Mỗi click đều phải qua server để đếm.
+3. **Ghi cạnh tranh an toàn.** Tạo link bằng `PutItem` kèm
+   `ConditionExpression: attribute_not_exists(short_code)`. Mã đã xoá không được cấp lại.
+4. **Chống lạm dụng nhiều lớp.** WAF → throttling của API Gateway → rate limit theo IP trong
+   DynamoDB → chặn domain → đánh dấu link đáng ngờ.
+5. **Không lưu PII.** Click event chỉ lưu `ip_hash` (16 ký tự hex, HMAC có salt), không lưu
+   `user_agent` và không lưu IP thật.
+
+**Region:** workload ở `ap-southeast-2` (Sydney). Tài khoản Free plan kiểu mới bị AWS ghim Region
+theo project; TV1 đã bị chặn ở `ap-southeast-1` (`docs/backend_research.md` §6.2). Stack edge dùng
+CloudFront nên deploy ở `us-east-1`. WAF phạm vi `CLOUDFRONT` chỉ tạo được ở `us-east-1`.
+
+---
+
+## 2. Sơ đồ tổng thể
 
 ```mermaid
 flowchart TB
-    subgraph Client["Client — Browser / Bot / Attacker"]
-        UI["Frontend Static<br/>S3 + CloudFront<br/>index.html, dashboard,<br/>error.html, warning.html<br/>Turnstile widget"]
+    subgraph Client["Client"]
+        UI["Giao diện tĩnh<br/>S3 + CloudFront<br/>index / dashboard / links<br/>protection / warning / error"]
     end
 
-    subgraph Edge["AWS Edge — us-east-1 (WAF) + CloudFront"]
-        WAF["AWS WAF Web ACL<br/>scope=CLOUDFRONT, us-east-1<br/>① IP Reputation<br/>② Rate-based /shorten 100/5'/IP<br/>③ Rate-based /code 1000/5'/IP<br/>④ KnownBadInputs + CRS"]
-        CF["CloudFront Distribution<br/>Behaviors:<br/>/assets* → S3 (cache lâu)<br/>/api/* → HTTP API (no-cache)<br/>/{code} → HTTP API (TTL 0)<br/>+ Country header + HSTS"]
+    subgraph Edge["Biên — us-east-1"]
+        WAF["AWS WAF Web ACL<br/>scope CLOUDFRONT<br/>① ShortenRateLimit<br/>② GlobalRateLimit<br/>③ AmazonIpReputation<br/>④ CommonRuleSet<br/>(EnableWaf, mặc định false)"]
+        CF["CloudFront<br/>/api/* → HTTP API<br/>/{code} → HTTP API<br/>/css /js /mock /assets /vendor → S3<br/>/*.* → S3<br/>+ header X-Origin-Verify"]
     end
 
-    subgraph GW["API Gateway — HTTP API (ap-southeast-1)"]
-        RT1["POST /api/shorten<br/>throttle 10 rps"]
-        RT2["GET /{code}[?confirm=1]<br/>throttle 150 rps"]
-        RT3["GET /api/stats, /stats/code<br/>GET /api/links, DELETE /links/code"]
+    subgraph GW["API Gateway — HTTP API"]
+        RT1["POST /api/shorten<br/>throttle 10 rps / burst 20"]
+        RT2["GET /{code}<br/>throttle 100 rps / burst 200"]
+        RT3["GET,DELETE /api/links<br/>GET /api/stats"]
     end
 
-    subgraph Compute["Lambda — Python 3.11, 128 MB, timeout 5s"]
-        LShort["shorten_fn<br/>validate → Turnstile verify<br/>→ blocklist/GSB-cache check<br/>→ conditional PutItem urls<br/>→ enqueue scan job<br/>429 + Retry-After"]
-        LRedir["redirect_fn<br/>GetItem urls → check<br/>blocked/expired/max_clicks/suspicious<br/>→ 302 + no-store<br/>→ PutItem clicks + ADD stats"]
-        LStats["stats_fn<br/>read stats_agg + urls<br/>→ StatsResponse JSON"]
-        LScan["scanner_fn (async)<br/>GSB v4 + URLhaus<br/>→ verdict_cache/blocklist<br/>→ update urls.status"]
-        LProc["click_processor<br/>Streams NEW_IMAGE INSERT-only<br/>→ aggregate stats_agg<br/>idempotent + partial-batch"]
+    subgraph Compute["Lambda — Python 3.11 arm64, 256 MB"]
+        LShort["shorten<br/>validate → Turnstile → blocklist<br/>→ PutItem urls"]
+        LRedir["redirect<br/>GetItem urls → check trạng thái<br/>→ ADD click_count → ghi clicks<br/>→ 302 no-store"]
+        LLinks["links<br/>Query GSI owner-index<br/>DELETE: xoá mềm + dọn thống kê"]
+        LStats["stats<br/>Query stats theo scope/sk"]
+        LProc["process_clicks<br/>Stream NEW_IMAGE, INSERT<br/>→ cộng dồn stats theo phút<br/>→ gắn cờ link bất thường"]
     end
 
-    subgraph Data["DynamoDB — on-demand + TTL + Streams"]
-        TUrls[("urls<br/>PK short_code<br/>GSI owner-created<br/>status, long_url,<br/>expires_at, max_clicks")]
-        TClicks[("clicks<br/>PK short_code#minute<br/>SK timestamp#rand<br/>TTL 90d, Streams ON")]
-        TAgg[("stats_agg<br/>PK agg#code#granule<br/>total, bot, countries,<br/>devices, browsers, referrers")]
-        TRate[("rate_limits<br/>PK ip#hash<br/>SK endpoint#bucket<br/>count + TTL 120s")]
-        TBlock[("blocklist + verdict_cache<br/>PK sha256(url|domain)<br/>status + TTL")]
+    subgraph Data["DynamoDB — provisioned, TTL, Streams"]
+        TUrls[("urls<br/>PK short_code<br/>GSI owner-index (owner_id, created_at)")]
+        TClicks[("clicks<br/>PK short_code, SK sk=ts#id<br/>TTL 30 ngày, Stream NEW_IMAGE")]
+        TStats[("stats<br/>PK scope (GLOBAL/LINK#code/META)<br/>SK sk=M#phút<br/>TTL 8 ngày")]
+        TRate[("rate_limits<br/>PK pk=loại#ip_hash#cửa sổ")]
+        TBlock[("blocklist<br/>PK domain")]
     end
 
-    subgraph Ops["Ops & Anti-abuse"]
-        SQS["SQS scan-queue + DLQ"]
-        EB["EventBridge cron 6h<br/>re-scan top links"]
-        CW["CloudWatch<br/>metrics + alarms<br/>WAF logs → S3"]
-        BUD["AWS Budget $5/mo<br/>mail cả nhóm"]
-        SSM["SSM SecureString/KMS<br/>salt, GSB key,<br/>Turnstile secret"]
+    subgraph Ops["Vận hành"]
+        SSM["SSM Parameter Store<br/>SecureString: origin-verify,<br/>turnstile-secret"]
+        SQS["SQS DLQ<br/>lỗi xử lý stream"]
+        CW["CloudWatch<br/>alarm DLQ"]
+        BUD["AWS Budget $5/tháng"]
     end
 
-    UI -->|HTTPS GET/POST| WAF
+    UI -->|HTTPS| WAF
     WAF -->|allow| CF
     CF -->|/api/shorten| RT1
-    CF -->|/{code}| RT2
     CF -->|/api/*| RT3
+    CF -->|/{code}| RT2
     RT1 --> LShort
     RT2 --> LRedir
+    RT3 --> LLinks
     RT3 --> LStats
     LShort --> TUrls
     LShort --> TRate
     LShort --> TBlock
-    LShort -->|send message| SQS
-    SQS --> LScan
-    EB --> LScan
-    LScan --> TBlock
-    LScan --> TUrls
     LRedir --> TUrls
     LRedir --> TClicks
     LRedir --> TRate
+    LLinks --> TUrls
+    LLinks --> TClicks
+    LLinks --> TStats
+    LStats --> TStats
     TClicks -->|Streams NEW_IMAGE| LProc
-    LProc --> TAgg
-    LStats --> TAgg
-    LStats --> TUrls
-    LShort -.->|read secret| SSM
-    LRedir -.->|read salt| SSM
-    LScan -.->|read GSB key| SSM
-    WAF -.->|logs| CW
-    CW -.->|alarm| BUD
+    LProc --> TStats
+    LProc -->|gắn cỏ| TUrls
+    LProc -->|lỗi| SQS
+    SQS --> CW
+    LShort -.->|đọc bí mật| SSM
+    LRedir -.->|đọc SSM origin-verify| SSM
+    BUD -.->|cảnh báo mail| CW
 ```
 
-### Biến thể rút gọn (để dán vào slide/báo cáo)
+### Luồng tạo link và luồng redirect
 
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant CF as CloudFront + WAF
+    participant CF as CloudFront
     participant API as HTTP API
     participant L as Lambda
     participant DB as DynamoDB
-    participant S as Scanner (async)
-    Note over C,S: Luồng tạo link
+
+    Note over C,DB: Tạo link
     C->>CF: POST /api/shorten {url, alias, turnstile_token}
-    CF->>API: forward (WAF pass, country header)
-    API->>L: shorten_fn
-    L->>DB: check rate_limits + blocklist cache
+    CF->>API: forward kèm X-Origin-Verify
+    API->>L: shorten
+    L->>DB: rate limit (rate_limits)
+    L->>L: validate URL + DNS + blocklist
     L->>DB: PutItem urls (attribute_not_exists)
-    L-->>C: 201 {code, short_url} (scan chạy nền)
-    L->>S: enqueue scan job
-    S->>DB: verdict → update status
-    Note over C,S: Luồng redirect
+    L-->>C: 201 {code, short_url}
+
+    Note over C,DB: Truy cập link
     C->>CF: GET /{code}
     CF->>API: forward (no-cache)
-    API->>L: redirect_fn GetItem urls
-    L->>DB: PutItem clicks (async aggregate via Streams)
-    L-->>C: 302 Location + no-store (hoặc 403/404/410)
+    API->>L: redirect
+    L->>DB: GetItem urls
+    L->>DB: ADD click_count
+    L->>DB: PutItem clicks
+    L-->>C: 302 Location + no-store
+    DB->>L: Stream NEW_IMAGE
+    L->>DB: ADD stats (theo phút)
 ```
 
 ---
 
-## 3. Data Flow chi tiết
+## 3. Data flow
 
-### 3.1. Luồng tạo link — `Client → CloudFront/Turnstile → WAF → API Gateway → Lambda → DynamoDB`
+### 3.1. Tạo link — `POST /api/shorten`
 
-| Bước | Thành phần | Xử lý | Lỗi |
-|---|---|---|---|
-| 1 | Frontend (TV2) | Render Turnstile widget (`data-action="shorten"`), thu `turnstile_token` + `X-Owner-Id` (UUID trình duyệt), `POST /api/shorten {url, alias, expires_in, max_clicks, turnstile_token}` | Thiếu token → vẫn gửi, server sẽ `captcha_failed` |
-| 2 | CloudFront + WAF | WAF: IP Reputation → rate-based `/api/shorten` (100/5'/IP) → KnownBadInputs/CRS (Count→Block). CloudFront: behavior `/api/*` no-cache, forward `CloudFront-Viewer-Country`, `X-Owner-Id`, query | Vượt → WAF 403 (không vào origin, không tốn Lambda) |
-| 3 | HTTP API | Route `POST /shorten`, throttle route 10 rps; forward JSON cho Lambda | Vượt throttle → 429 |
-| 4a | `shorten_fn` — kiểm tra rẻ đồng bộ | Trim/2048 ký tự → `new URL()` → whitelist `http/https` → chặn `user:pass@`/whitespace → hostname vs own-domain + CloudFront domain → IP-literal check (kể cả `2130706433`, `127.1`, hex/octal, `::ffff:127.0.0.1`) → `assertDnsSafe` (mọi A/AAAA không private) → alias regex + reserved → `expires_in`/`max_clicks` range | `invalid_url` / `invalid_alias` (400) |
-| 4b | `shorten_fn` — anti-abuse | Token-bucket `rate_limits` (10/phút/IP) → verify Turnstile server (`siteverify`, check `success+hostname+action`, one-time) → tra `blocklist`/`verdict_cache` (hit độc → `blocked_domain`) | `rate_limited` (429 + `Retry-After`) / `captcha_failed` / `blocked_domain` (400) |
-| 5 | `shorten_fn` — ghi | `PutItem urls ConditionExpression attribute_not_exists(short_code)`: mã random Base62-7 bằng `secrets` (thử ≤ 5 lần) hoặc alias; dedupe cùng `(owner, long_url)` còn active → trả lại 200 `created:false`; `expires_at = now + expires_in`, `status=active`, `click_count=0` | Trùng alias → 409 `alias_taken`; trùng mã 5 lần → 500 |
-| 6 | Trả về + scan nền | Trả `201 {code, short_url, created:true}` ngay; `send_message` SQS `scan-queue` (DLQ sau 3 lần). `scanner_fn`: GSB `threatMatches` (batch) + URLhaus lookup → `verdict_cache` (TTL sạch 24h/độc 7–30d) → nếu độc: `urls.status=blocked`, thêm domain vào `blocklist` | Scan lỗi → retry/backoff, không ảnh hưởng response đã trả |
-
-### 3.2. Luồng redirect — `Client → CloudFront → API Gateway → Lambda → DynamoDB → 302 + event analytics`
-
-| Bước | Thành phần | Xử lý | Kết quả |
-|---|---|---|---|
-| 1 | Client | `GET https://linkpulse.vn/{code}[?confirm=1]` (mở trực tiếp, `<a>`, hoặc `<img>` — đều tính như nhau ở v1) | — |
-| 2 | CloudFront + WAF | Behavior `/{code}`: **TTL 0, forward query `confirm`**, không cache; WAF rate-based 1000/5'/IP + IP Reputation | Flood → WAF 403 |
-| 3 | HTTP API → `redirect_fn` | `GetItem urls(short_code)` (1 read, consistent-read tắt để rẻ). Thứ tự kiểm tra: `blocked` → `expired` → `max_clicks` → `suspicious` (cần `confirm=1`) → `deleted/không tồn tại` | `403 link_blocked` / `410 link_expired` / `410 max_clicks_reached` / `403 link_suspicious` / `404 not_found` |
-| 4 | Redirect thành công | Trả `302 Location: <long_url>` + `Cache-Control: no-store, private` + `Referrer-Policy: no-referrer`. **Fire-and-forget:** `PutItem clicks` (TTL 90d) với `ip_hash`, `country` (từ `CloudFront-Viewer-Country` → `XX` nếu thiếu), `device/browser` (parse UA, cắt 512 ký tự), `referrer` (domain/`direct`), `user_agent` | Click được đếm; `max_clicks`/`click_count` tăng atomic (`ADD`) |
-| 5 | Analytics async | `clicks` Streams (`NEW_IMAGE`) → `click_processor` (batch ≤ 100, `INSERT`-only, idempotent theo `eventID`, partial-batch-failure) → `ADD` vào `stats_agg` theo phút/giờ + breakdowns; bot (`device=bot`) cộng riêng `bot_clicks` | Dashboard `GET /stats` đọc `stats_agg` (poll 5s), không quét `clicks` |
-
-### 3.3. Các luồng phụ
-
-- **Quản trị:** `DELETE /links/{code}` (đúng `X-Owner-Id`, đánh dấu `deleted`, không cấp lại) · `GET /links` (GSI owner, cursor `LastEvaluatedKey` → `next_cursor`) — v1 chưa có auth thật, Week 2 thêm Cognito/JWT cho block/unblock.
-- **Re-scan:** EventBridge cron 6h → `scanner_fn` quét link `active` + top-click (chống domain đổi chủ thành phishing).
-- **Kill-switch:** WAF block-all rule / tắt behavior CloudFront / `status=blocked` hàng loạt khi bị tấn công hoặc vượt budget.
-
----
-
-## 4. Định nghĩa Interface giữa các module
-
-Quy ước chung (`api_spec.yaml`): thời gian ISO-8601 UTC `Z`; mã công khai tên `code` (= `short_code` trong DB); lỗi `{ error: { code, message?, reason?, retry_after? } }`; redirect `302 + no-store`; phân trang cursor.
-
-### 4.1. TV1 Backend Core ↔ TV2 Frontend (HTTP API)
-
-| Method & Path | Request | Response thành công | Lỗi chính |
-|---|---|---|---|
-| `POST /api/shorten` | Header `X-Owner-Id: <uuid>` · Body `{ url: string(≤2048, http/https), alias?: ^[A-Za-z0-9-]{3,30}$, expires_in?: 60–31536000 (s), max_clicks?: ≥1, turnstile_token: string }` | `201 { code, short_url, created:true, long_url, expires_at?, max_clicks? }` · trùng URL cũ → `200 created:false` | `400 invalid_url/blocked_domain/invalid_alias/invalid_expires_in/invalid_max_clicks/captcha_failed` · `409 alias_taken` · `429 rate_limited + Retry-After` |
-| `GET /{code}[?confirm=1]` | Path `code`, query `confirm=1` (tiếp tục link suspicious) | `302 Location: <long_url>` + `Cache-Control: no-store` | `403 link_blocked/link_suspicious` · `404 not_found` · `410 link_expired/max_clicks_reached` (trang `error.html`/`warning.html` của TV2) |
-| `GET /api/stats?from&to&granularity(minute/hour)` | Query ISO-8601 | `200 StatsResponse` toàn hệ thống (+ `top_links`, `flagged_links`) | `400` param sai · `429` |
-| `GET /api/stats/{code}?...` | Path `code` + query như trên | `200 StatsResponse` (+ `link` object, không `top_links`) | `404 not_found` |
-| `GET /api/links?q&status&sort&limit(1–50)&cursor` | Header `X-Owner-Id` | `200 { summary:{total_links,active_links,total_clicks}, items:[LinkItem], next_cursor? }` | `401 unauthorized` (thiếu owner) |
-| `DELETE /api/links/{code}` | Header `X-Owner-Id` | `204` (đánh dấu `deleted`) | `401/403 forbidden/404` |
-
-`LinkItem = { code, short_url, long_url, clicks, created_at, expires_at?, max_clicks?, status: active|suspicious|blocked|max_clicks|expired }`.
-`StatsResponse` xem `api_spec.yaml`: `total_clicks` (gồm bot), `bot_clicks`, `unique_visitors` (ước tính theo `ip_hash`), `timeline[{bucket, clicks, bot_clicks}]`, `countries/devices/browsers/referrers`, `recent_clicks[]` (không PII), `avg_clicks_per_minute`.
-
-### 4.2. Lambda ↔ DynamoDB (TV1 ↔ TV3)
-
-**Bảng `urls`** — nguồn sự thật link:
-
-| Thuộc tính | Kiểu / Khóa | Ghi chú |
+| Bước | Xử lý | Lỗi |
 |---|---|---|
-| `short_code` | String, **PK** | Mã Base62-7 hoặc alias; **không cấp lại** kể cả `deleted` |
-| `long_url` | String (≤2048) | URL đích đã validate 2 lớp |
-| `owner` | String (UUID) — **GSI `gsi_owner` PK=`owner`, SK=`created_at`** | Liệt kê "Link của tôi" + dedupe `(owner, long_url)` |
-| `status` | `active\|suspicious\|blocked\|deleted` | Trạng thái ghi; `expired`/`max_clicks` suy ra lúc đọc (TV1 `link_state`) |
-| `created_at` / `expires_at` | ISO-8601 UTC | `expires_at = created + expires_in` |
-| `max_clicks` / `click_count` | Number | `ADD click_count` mỗi redirect hợp lệ |
-| `created_via` / `verdict_at` | String/ISO | Audit: `ui|api`, thời điểm scan GSB/URLhaus |
+| 1. Biên | CloudFront forward `/api/*` (không cache), kèm `X-Origin-Verify`; WAF kiểm tra rate-based `/api/shorten` và managed rule set | Vượt ngưỡng → 403 từ WAF |
+| 2. API Gateway | Throttle route `POST /api/shorten`: 10 rps, burst 20 | 429 |
+| 3. Rate limit theo IP | Ghi có điều kiện vào `rate_limits` (`shorten#<ip_hash>#<cửa sổ>`), mặc định 10 lần/phút | 429 + `Retry-After` |
+| 4. Chặn trực tiếp | `origin.verify()` — request không có header `X-Origin-Verify` đúng sẽ bị 403 | 403 `forbidden` |
+| 5. Validate đầu vào | `validate_url`: scheme `http`/`https`, cấm `user:pass@`, cấm khoảng trắng, dài ≤ 2048, cấm host của chính hệ thống, chặn IP literal nội bộ. `validate_shorten_input`: alias theo `^[A-Za-z0-9-]{3,30}$`, `expires_in` 60–31536000, `max_clicks` ≥ 1 | 400 `invalid_url` / `invalid_alias` / `invalid_expires_in` / `invalid_max_clicks` |
+| 6. DNS | `check_dns`: phân giải A/AAAA, từ chối nếu bất kỳ địa chỉ nào thuộc dải nội bộ (chặn SSRF) | 400 `invalid_url` với reason `host_not_allowed` / `host_unresolvable` |
+| 7. Captcha | `turnstile.verify` gọi `siteverify` của Cloudflare (chỉ khi `TurnstileSecretParam` được đặt) | 400 `captcha_failed` |
+| 8. Độ tin cậy | `reputation.is_blocked`: tra `blocklist` theo host và domain cha, có thể hỏi Google Safe Browsing nếu đặt key. `suspicious_reasons`: IP literal, punycode, nhiều subdomain, TLD rủi ro, link rút gọn lồng nhau | 400 `blocked_domain` |
+| 9. Ghi link | `PutItem urls` với `attribute_not_exists(short_code)`. Cùng chủ sở hữu và cùng URL còn active thì trả lại link cũ (200, `created:false`). Trạng thái `suspicious` nếu có dấu hiệu đáng ngờ | 409 `alias_taken`; hết lượt thử sinh mã → 500 |
 
-Truy cập: `PutItem + attribute_not_exists(short_code)` (tạo) · `GetItem` (redirect nóng) · `Query gsi_owner` (list) · `UpdateItem status` (block/scan/xóa).
+### 3.2. Truy cập link — `GET /{code}`
 
-**Bảng `clicks`** — 1 item/click (TV4 schema):
-
-| Thuộc tính | Kiểu / Khóa | Ghi chú |
+| Bước | Xử lý | Kết quả |
 |---|---|---|
-| `pk` = `<short_code>#<yyyy-mm-dd-hh-mm>` | String PK | Gom theo phút để query rẻ |
-| `sk` = `<timestamp>#<rand6>` | String SK | Sắp xếp + idempotent |
-| `short_code, timestamp, ip_hash(64hex), country([A-Z]{2}\|XX), device(desktop\|mobile\|tablet\|bot\|other), browser, referrer, user_agent(≤512)` | Attrs | Khớp `click_event_schema.json`; **không lưu IP gốc** |
-| TTL 90 ngày · **Streams `NEW_IMAGE`** | — | `click_processor` chỉ xử lý `INSERT` |
+| 1. Biên | Behavior `/{code}` không cache; WAF rate-based toàn domain | 403 khi vượt ngưỡng |
+| 2. API Gateway | Throttle toàn API 100 rps, burst 200 | 429 |
+| 3. Rate limit theo IP | `redirect#<ip_hash>#<cửa sổ>`, mặc định 300/phút (`REDIRECT_RATE_LIMIT=0` để tắt) | 429 + `Retry-After` |
+| 4. Kiểm tra trạng thái | `GetItem urls`. Thứ tự: `deleted` → 404, `blocked` → 403, hết hạn → 410, đạt giới hạn click → 410, `suspicious` → 403 trừ khi có `?confirm=1` | 403 / 404 / 410 |
+| 5. Đếm click | `ADD click_count` có điều kiện `< max_clicks` (atomic) | 410 nếu đã đạt giới hạn |
+| 6. Ghi click event | `PutItem clicks`: `ip_hash` 16 hex, `country`, `device`, `browser`, `referrer`, `result` (`valid`/`bot`). TTL 30 ngày | Lỗi ghi không chặn redirect |
+| 7. Trả về | `302 Location` + `Cache-Control: no-store` | — |
 
-**Bảng `stats_agg`** — số liệu dashboard đọc:
+Khi `ErrorPageMode=redirect` và trình duyệt gửi `Accept: text/html`, lỗi trả `302` sang
+`error.html` hoặc `warning.html` thay vì JSON.
 
-| Khóa | Nội dung |
-|---|---|
-| `pk = agg#<code\|GLOBAL>#<minute\|hour>`, `sk = <bucket ISO>` | `total_clicks`, `bot_clicks`, `unique_approx` (HLL hoặc set `ip_hash` cắt 10k), breakdowns `countries/devices/browsers/referrers` (map), `updated_at` |
+### 3.3. Tổng hợp thống kê
 
-**Bảng `rate_limits`** — token bucket:
+`clicks` có DynamoDB Stream `NEW_IMAGE`. `process_clicks` xử lý batch tối đa 100 event, chỉ nhận
+`eventName = INSERT`, cộng dồn vào `stats`:
 
-| Khóa | Nội dung |
-|---|---|
-| `pk = IP#<sha256(ip+salt)>`, `sk = <endpoint>#<bucket-phút>` | `count` (`ADD 1`), TTL 120s; hạn mức: shorten 10/p · redirect 120/p · stats 60/p |
+- `scope = GLOBAL` cho toàn hệ thống, `scope = LINK#<code>` cho từng link, `scope = META` cho
+  bộ đếm và danh sách click gần đây.
+- `sk = M#<ISO phút>`; các bộ đếm phẳng `clicks`, `bot_clicks`, `c:<country>`, `d:<device>`,
+  `b:<browser>`, `r:<referrer>`, `l:<code>` (chỉ ở GLOBAL), cùng tập `ips` để ước tính
+  unique visitors.
+- Cùng lúc đó `abuse.evaluate()` đối chiếu số click/phút với ngưỡng `SpikeClicksPerMinute`
+  (mặc định 300) và tỉ lệ bot với `BotMinClicks` (mặc định 50) + `BotRatio` (mặc định 0.8).
+  Vượt ngưỡng thì `urls.status` chuyển `suspicious` kèm `flag_reason`.
+- Lỗi xử lý batch thì Lambda retry, hết số lần thì event vào SQS DLQ; CloudWatch alarm báo khi
+  DLQ có message.
 
-**Bảng `blocklist` + `verdict_cache`**:
+Độ trễ cập nhật dashboard vài giây (`MaximumBatchingWindowInSeconds = 2`).
 
-| Khóa | Nội dung |
-|---|---|
-| `pk = DOMAIN#<host>` / `URL#<sha256(canonical)>` | `status: blocked|suspicious|clean`, `source: gsb|urlhaus|manual`, `exp` (TTL), `updated_at` |
+### 3.4. Quản lý link
 
-### 4.3. Redirect Worker ↔ Analytics (TV4)
-
-- `redirect_fn → clicks`: `PutItem` fire-and-forget (không chờ Streams); `country` từ `CloudFront-Viewer-Country` (validate `^[A-Z]{2}$` else `XX`); `device/browser` từ `user-agents` lib (tablet > mobile > desktop > bot > other); `referrer` = domain hoặc `direct`; `ip_hash = SHA256(ip + salt_KMS)`.
-- `clicks Streams → click_processor → stats_agg`: batch, idempotent (`eventID` dedupe 24h), `REPORT_BATCH_ITEM_FAILURES`; alarm khi `IteratorAge > 60s`.
-- `stats_fn → frontend`: chỉ đọc `stats_agg` + `urls` (không quét `clicks` nóng); `updated_at` cho nhãn LIVE; không trả `ip_hash`/UA.
-
-### 4.4. Edge ↔ Origin (TV5 ↔ tất cả)
-
-- CloudFront forward: `CloudFront-Viewer-Country`, `X-Owner-Id`, query-string (`confirm`, `from/to/granularity/cursor`), `User-Agent`, `Referer`. Không forward `Cookie`.
-- Origin khóa truy cập trực tiếp: API Gateway resource policy + header `X-Origin-Verify: <secret xoay>` do CloudFront chèn (chống forge country header).
-- WAF logs → S3 + CloudWatch; Budget $5 alarm → mail nhóm + (tùy chọn) auto-disable `scan`/throttle.
+- `GET /api/links`: query GSI `owner-index` theo `X-Owner-Id`, lọc `status`, tìm theo `q`, phân
+  trang bằng cursor (`LastEvaluatedKey`).
+- `DELETE /api/links/{code}`: đánh dấu `status = deleted` (giữ mã, không cấp lại) và xoá click
+  event cùng thống kê của link đó.
+- Chặn / gỡ chặn domain: dùng `scripts/blocklist.sh` (hoặc `.ps1`). Hệ thống không có giao diện
+  quản trị.
 
 ---
 
-## 5. Phi chức năng (NFR) & giới hạn v1
+## 4. Interface giữa các module
 
-| NFR | Mục tiêu v1 (demo) | Đo bằng gì |
+### 4.1. HTTP API
+
+| Method & Path | Request | Thành công | Lỗi chính |
+|---|---|---|---|
+| `POST /api/shorten` | `X-Owner-Id` · `{ url, alias?, expires_in?, max_clicks?, turnstile_token? }` | `201 { code, short_url, created, long_url, expires_at?, max_clicks? }` | 400 `invalid_url` / `blocked_domain` / `invalid_alias` / `invalid_expires_in` / `invalid_max_clicks` / `captcha_failed` · 409 `alias_taken` · 429 `rate_limited` |
+| `GET /{code}[?confirm=1]` | path `code` | `302 Location` + `Cache-Control: no-store` | 403 `link_blocked` / `link_suspicious` · 404 `not_found` · 410 `link_expired` / `max_clicks_reached` |
+| `GET /api/links` | `X-Owner-Id` · `status?` `q?` `sort?` `limit≤50` `cursor?` | `200 { summary, items, next_cursor? }` | 401 `unauthorized` |
+| `DELETE /api/links/{code}` | `X-Owner-Id` | `204` | 401 / 403 `forbidden` / 404 |
+| `GET /api/stats` | `from?` `to?` `granularity=minute\|hour` | `200 StatsResponse` | 400 · 429 |
+| `GET /api/stats/{code}` | như trên | `200 StatsResponse` | 404 |
+| `GET /api/health` | — | `200` | — |
+
+Chuẩn lỗi: `{ "error": { "code", "message?", "reason?", "retry_after?" } }`. Mã lỗi đầy đủ xem
+`docs/api_spec.yaml`.
+
+### 4.2. DynamoDB
+
+`backend/template.yaml` là nguồn sự thật của schema. Chế độ tính phí `PROVISIONED` để nằm trong
+mức miễn phí.
+
+| Bảng | Khoá | Ghi chú |
 |---|---|---|
-| Redirect p95 | < 300 ms (edge HIT static; redirect luôn MISS nhưng Lambda + DDB 1 read) | CloudWatch `Duration` + RUM |
-| Tạo link p95 (không tính scan) | < 800 ms (validate + Turnstile + 1 PutItem) | API logs |
-| Khả dụng | Best-effort (single-region); RTO thủ công qua kill-switch | Alarm + runbook |
-| Bảo mật | T-01…T-15 có mitigation ở `threat_model.md` §5; không secret trong repo | Review checklist + `ReadLints` |
-| Chi phí | < **$5/tháng** ở tải demo (on-demand, TTL, log lifecycle) | Budget + Cost Explorer |
-| Quan sát được | Mọi 4xx/5xx có `error.code`; trace `x-request-id` end-to-end | CloudWatch Insights |
+| `urls` | PK `short_code` · GSI `owner-index` (`owner_id`, `created_at`) | `status`, `long_url`, `owner_id`, `created_at`, `expires_at`, `max_clicks`, `click_count`, `flag_reason`, `flagged_at`. Xoá mềm giữ `status = deleted`. |
+| `clicks` | PK `short_code` · SK `sk = <ts>#<id>` | TTL 30 ngày · Stream `NEW_IMAGE` là nguồn của pipeline. Chỉ lưu `ip_hash`, không lưu `user_agent`. |
+| `stats` | PK `scope` (`GLOBAL` / `LINK#<code>` / `META`) · SK `sk = M#<phút>` | TTL 8 ngày · bộ đếm phẳng và tập `ips`. |
+| `rate_limits` | PK `pk = <loại>#<ip_hash>#<cửa sổ>` | Ghi có điều kiện nguyên tử, TTL tự dọn. |
+| `blocklist` | PK `domain` | Khớp cả domain cha (`a.b.bad.com` khớp `bad.com`). |
 
-**Giới hạn đã biết:** chưa auth thật (X-Owner-Id yếu) · chưa re-scan realtime · WAF Bot Control trả phí chưa dùng · multi-region/active-active ngoài phạm vi đồ án.
+### 4.3. Edge ↔ Origin
 
----
-
-## 6. Export `docs/architecture.png` (cho Draw.io/báo cáo)
-
-```bash
-# Cách 1: Mermaid CLI (khuyến nghị, giữ font anchor)
-npm i -g @mermaid-js/mermaid-cli
-mmdc -i docs/architecture.mmd -o docs/architecture.png -b white -s 3
-# (trích flowchart §2 vào docs/architecture.mmd trước khi chạy)
-
-# Cách 2: Draw.io — Arrange → Insert → Advanced → Mermaid, dán §2, chỉnh icon AWS (AWS 2024 stencils),
-# File → Export as → PNG 300dpi → lưu đè docs/architecture.png
-```
+- CloudFront forward `CloudFront-Viewer-Country`, `CloudFront-Viewer-Address`, `User-Agent`,
+  `Referer`, `Accept`, `X-Owner-Id`; forward toàn bộ query string. Không forward `Cookie`.
+- CloudFront gắn header `X-Origin-Verify` vào mọi request tới API. Backend đọc cùng bí mật từ
+  SSM (`OriginVerifySecretParam`) và so sánh bằng `hmac.compare_digest`. Request thiếu hoặc sai
+  header bị từ chối 403, nên không gọi thẳng `*.execute-api.amazonaws.com` để né WAF được.
+  Bật bằng tham số `OriginVerifySecretParam`; để trống thì tắt (dùng cho dev).
+- `IpHashSalt` truyền thẳng qua tham số template vào biến môi trường `IP_HASH_SALT` của Lambda
+  (dùng làm khoá HMAC băm IP). Turnstile secret và Google Safe Browsing key nằm trong SSM
+  SecureString, đọc qua `secrets_store.get_secret` và cache theo process.
+- WAF ghi log vào bucket S3 (tham số `WafLogBucket`) khi bật.
 
 ---
 
-## 7. Tài liệu tham khảo
+## 5. Yêu cầu phi chức năng và giới hạn
 
-- Nhóm: `docs/api_spec.yaml`, `docs/backend_research.md` (TV1), `docs/analytics_research.md` + `click_event_schema.json` (TV4), `docs/threat_model.md` + `docs/security_research.md` (TV5), `backend/prototype.py` + `backend/template.yaml`.
-- AWS: CloudFront behaviors & policies, WAF scope CLOUDFRONT/us-east-1, API Gateway HTTP API throttling, Lambda (concurrency/env 4KB), DynamoDB (conditional writes, GSI, TTL, Streams), EventBridge Scheduler, SQS DLQ, SSM SecureString/KMS, Budgets.
-- Mermaid flowchart/sequenceDiagram · Draw.io AWS icons.
+| Yêu cầu | Mục tiêu | Đo bằng gì |
+|---|---|---|
+| Độ trễ redirect | p95 < 300 ms | CloudWatch `Duration` của `redirect` |
+| Độ trễ tạo link | p95 < 800 ms (chưa tính verify captcha) | CloudWatch `Duration` của `shorten` |
+| Độ trễ thống kê | vài giây sau click | `stats` đọc từ dashboard |
+| Chi phí | < $5/tháng ở tải demo | AWS Budget + Cost Explorer |
+| Quan sát được | Mọi lỗi có `error.code`; log CloudWatch theo request | CloudWatch Logs |
+
+Giới hạn đã biết:
+
+- `X-Owner-Id` là định danh do client tự sinh, chưa có xác thực thật (chưa dùng Cognito/JWT).
+- Stream là at-least-once nên khi retry có thể đếm dư một ít.
+- Tập `ips` trong một item `stats` bị giới hạn 400 KB; lưu lượng rất cao thì cần đổi sang
+  HyperLogLog hoặc Kinesis.
+- Safe Browsing và Turnstile là dịch vụ ngoài AWS, mặc định tắt; đây là lớp bổ sung, không thay
+  thế WAF, throttling và rate limit.
+- WAF có phí nên mặc định `EnableWaf=false`; bật khi kiểm thử rồi tắt.
+
+---
+
+## 6. Tham khảo
+
+- Nhóm: `docs/api_spec.yaml`, `docs/database_design.md`, `docs/analytics_research.md`,
+  `docs/backend_research.md`, `docs/QUYET_DINH_CHOT_TUAN_2.md`, `docs/threat_model.md`,
+  `docs/security_research.md`.
+- Code: `backend/template.yaml`, `backend/src/handlers/`, `backend/src/linkpulse/`,
+  `infra/edge.yaml`.
+- AWS: CloudFront behaviors và policies, WAF scope `CLOUDFRONT`, API Gateway HTTP API throttling,
+  Lambda (env 4 KB, timeout), DynamoDB (conditional write, GSI, TTL, Streams), SSM Parameter Store
+  SecureString, SQS DLQ, AWS Budgets.
