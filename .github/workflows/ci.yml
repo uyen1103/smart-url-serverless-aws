@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest + cfn-lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cài thư viện test
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: pytest
+        run: python -m pytest tests -q
+
+      - name: cfn-lint backend/template.yaml
+        run: cfn-lint backend/template.yaml
+
+      - name: cfn-lint infra/edge.yaml
+        run: cfn-lint infra/edge.yaml
