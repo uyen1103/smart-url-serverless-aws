@@ -1,11 +1,11 @@
 # Security Research — Chống lạm dụng cho Smart URL Serverless (LinkPulse)
 
-> **Module:** TV5 — Security, Anti-abuse & DevOps · **Issue:** Week 1 / #5
+> **Module:** TV5 — Security, Anti-abuse & DevOps · **Issue:** Week 1 / #5 (cập nhật tuần 2 theo code thật)
 > **Phạm vi:** `CloudFront + WAF (us-east-1) → API Gateway HTTP API → Lambda Python 3.11 → DynamoDB`
-> (`urls`, `clicks`, `stats_agg`, `rate_limits`, `blocklist`), redirect `302 + no-store`,
-> analytics `DynamoDB Streams (NEW_IMAGE, INSERT-only) → click_processor`.
+> (`urls`, `clicks`, `stats`, `rate_limits`, `blocklist`), redirect `302 + no-store`,
+> analytics `DynamoDB Streams (NEW_IMAGE, INSERT-only) → process_clicks`.
 > **Đọc cùng:** `docs/threat_model.md` (T-01…T-15), `docs/api_spec.yaml`, `docs/backend_research.md`, `docs/architecture.md`.
-> **Ngày:** 27/10/2026 · **Trạng thái:** v1.0 — chốt phương án Week 2, số liệu giá/quota đối chiếu tháng 10/2026 (kiểm tra lại trước khi thanh toán).
+> **Ngày:** 27/10/2026 · **Trạng thái:** v1.1 — phần nghiên cứu giữ nguyên; mục 6 ghi rõ đã triển khai gì.
 
 ---
 
@@ -16,8 +16,8 @@
 | Edge | **CloudFront + AWS WAF** (Web ACL ở **`us-east-1`**, scope `CLOUDFRONT`) | HTTP API không gắn WAF trực tiếp và không có usage plan (TV1 §2) → chặn ở edge rẻ và sớm nhất; WAF CloudFront bắt buộc ở `us-east-1` |
 | WAF rules | **Rate-based** `/api/shorten` + `/{code}` + **Managed: Common Rule Set, Known Bad Inputs, Amazon IP Reputation** (Count trước, Block sau) | Chặn flood/bot/automation với false-positive thấp nhất; IP Reputation miễn phí sức mạnh cao |
 | API Gateway | **HTTP API throttling** (stage/route) + **token-bucket `rate_limits` trong DynamoDB** ở Lambda | HTTP API không có API key/usage plan → giới hạn theo IP ở Lambda + hiển thị `429 + Retry-After` đúng `api_spec.yaml` |
-| URL độc hại | **Google Safe Browsing v4 + URLhaus**, kiểm tra **bất đồng bộ (async) + cache verdict**, không chặn luồng redirect nóng | GSB chính xác/phủ rộng, URLhaus miễn phí không key cho lookup; async để redirect luôn < 300 ms |
-| Bot tạo link | **Cloudflare Turnstile** bắt buộc ở `POST /shorten` (verify server-side, one-time token) | Nhẹ, riêng tư, miễn phí không giới hạn; chặn automation mà không làm khó người thật |
+| URL độc hại | **Google Safe Browsing v4** ở luồng tạo (tuỳ chọn, tắt mặc định) + **blocklist nội bộ** | GSB phủ rộng; blocklist tra đồng bộ theo host và domain cha nên không ảnh hưởng đường redirect |
+| Bot tạo link | **Cloudflare Turnstile** ở `POST /shorten` (verify server-side; **tuỳ chọn**, tắt mặc định cho tới khi TV2 có site key) | Nhẹ, riêng tư, miễn phí không giới hạn; chặn automation mà không làm khó người thật |
 | Validate | **Whitelist `http/https` + max 2048 ký tự + chặn `data:`/`javascript:`/`ftp:`/`file:` + chặn IP nội bộ 2 lớp (literal + DNS resolve-all)** | Chặn SSRF/open-redirect/XSS ngay ở Lambda, tương đương `backend/prototype.py` + bổ sung DNS |
 | Vận hành | Budget **$5/tháng** + billing alarm + CloudWatch alarms + kill-switch | Chống bill-shock/economic-DoS (T-09) |
 
@@ -54,17 +54,17 @@ Rate-based rule đếm request trong **cửa sổ trượt 5 phút** cho mỗi I
 
 | Rule | Scope-down | Limit / 5 phút / IP | Action | Lý do |
 |---|---|---|---|---|
-| `RL-Shorten` | URI path bắt đầu `/api/shorten` (POST) | **100** | Block | Người thật tạo ≤ vài link/phút; 100/5' vẫn thoáng, bot tạo ồ ạt (T-02) bị cắt ngay. UI hiển thị giới hạn 10 link/phút/IP ở tầng app |
-| `RL-Redirect` | URI path khớp single-segment `/{code}` (GET, loại trừ `/api/*`, static) | **1.000** | Block | Redirect là traffic lớn nhất; 1000/5' ≈ 3.3 rps/IP — đủ cho demo; bot quét enumeration (T-03) / click-fraud (T-08) bị chặn |
-| `RL-Stats` | `/api/stats*`, `/api/links*` | **300** | Block | Chống scraper dashboard polling quá đà (TV2 poll 5s ≈ 60 req/5') |
-| `RL-Global-Flood` | (toàn distribution) | **5.000** | Block | Lưới an toàn cuối trước economic-DoS (T-09) |
+| `ShortenRateLimit` | URI path bắt đầu `/api/shorten` | **50** (tham số `ShortenRateLimitPer5Min`) | Block | Bot tạo ồ ạt (T-02) bị cắt ngay. UI hiển thị giới hạn 10 link/phút/IP ở tầng app |
+| `GlobalRateLimit` | toàn distribution | **1.000** (tham số `RateLimitPer5Min`) | Block | Redirect là traffic lớn nhất; bot quét enumeration (T-03) / click-fraud (T-08) bị chặn |
+| `AmazonIpReputation` | — | managed rule group | Count | Chặn IP trong danh sách threat-intel của AWS |
+| `CommonRuleSet` | — | managed rule group | Count | OWASP patterns; để Count trong lúc kiểm thử, chuyển Block sau khi xem log |
 
-> Chi tiết triển khai xem `terraform/foundation.tf` (§5 trong file Terraform đính kèm: `aws_wafv2_web_acl` + `rate_based_statement` + `scope_down_statement`). Với console: WAF → Web ACLs (us-east-1) → Add rules → Rate-based → cấu hình như bảng trên.
+> Triển khai trong `infra/edge.yaml` (`AWS::WAFv2::WebACL`), bật/tắt bằng tham số `EnableWaf` (mặc định `false` vì WAF có phí). Stack edge phải deploy ở `us-east-1`.
 
 **Lưu ý vận hành:**
 
 - NAT/CGNAT (ký túc xá, công ty) dồn nhiều user sau 1 IP → ngưỡng quá thấp gây false-positive. Giảm thiểu: scope-down hẹp (chỉ `/shorten`), kết hợp token-bucket app-layer theo `X-Owner-Id` + IP-hash thay vì block cứng IP ở edge.
-- Luôn bật **logging WAF → S3/CloudWatch** (`logging_configuration` trong Terraform) để hiệu chỉnh ngưỡng và làm bằng chứng abuse.
+- Bật **logging WAF → S3** khi kiểm thử (tham số `WafLogBucket` trong `infra/edge.yaml`) để hiệu chỉnh ngưỡng và làm bằng chứng abuse.
 - Khi bị tấn công DDoS lớn: hạ ngưỡng tạm thời + bật AWS Shield Standard (miễn phí, tự động ở CloudFront) → liên hệ AWS Shield Advanced chỉ khi cần SLA.
 
 ### 1.3. AWS Managed Rules — chọn gì, vì sao
@@ -94,7 +94,7 @@ Rate-based rule đếm request trong **cửa sổ trượt 5 phút** cho mỗi I
 - [ ] Origin request policy **chỉ forward header cần thiết**; không forward `Cookie` vô tội vạ (làm vỡ cache + lộ).
 - [ ] Custom error responses: 403/404/410 từ origin → trang `warning.html`/`error.html` của TV2 (cần thống nhất TV2/TV5 — TV1 §7).
 - [ ] Bắt buộc HTTPS (redirect HTTP→HTTPS, TLS 1.2+), HSTS ở response; WAF Web ACL attach vào distribution.
-- [ ] Khóa origin trực tiếp: API Gateway resource policy chỉ nhận từ CloudFront (kèm secret header `X-Origin-Verify` xoay định kỳ) để chống forge `CloudFront-Viewer-Country` (TV4 cảnh báo).
+- [x] Khóa origin trực tiếp: CloudFront gắn header `X-Origin-Verify`, backend so sánh với bí mật trong SSM (`backend/src/linkpulse/origin.py`) → chống forge `CloudFront-Viewer-Country` (TV4 cảnh báo).
 
 ---
 
@@ -115,21 +115,23 @@ Rate-based rule đếm request trong **cửa sổ trượt 5 phút** cho mỗi I
 **Tầng Gateway (chặn rẻ nhất sau WAF):**
 
 ```yaml
-# backend/template.yaml (SAM) — minh họa; số liệu demo, hiệu chỉnh sau đo
-ApiGateway:
-  StageName: prod
-  DefaultRouteSettings:
-    ThrottlingBurstLimit: 200
-    ThrottlingRateLimit: 100
-  RouteSettings:
-    "POST /shorten": { ThrottlingBurstLimit: 20, ThrottlingRateLimit: 10 }
-    "GET /{code}":    { ThrottlingBurstLimit: 300, ThrottlingRateLimit: 150 }
+# backend/template.yaml (SAM) — đã triển khai
+HttpApi:
+  Type: AWS::Serverless::HttpApi
+  Properties:
+    DefaultRouteSettings:
+      ThrottlingBurstLimit: 200
+      ThrottlingRateLimit: 100
+    RouteSettings:
+      "POST /api/shorten":
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
 ```
 
 **Tầng ứng dụng (chính xác theo IP/owner, trả `429 + Retry-After` đúng spec):**
 
-- Bảng `rate_limits`: PK `pk = IP#<sha256(ip+salt)>`, SK `sk = <endpoint>#<minute-bucket>`, `count` (atomic `ADD`), TTL 120s.
-- Hạn mức hiển thị trên UI: **10 link/phút/IP** (`POST /shorten`); `GET /{code}` 120/phút/IP; `GET /stats*` 60/phút/IP.
+- Bảng `rate_limits`: PK `pk = <loại>#<ip_hash>#<cửa sổ>`, `count` (atomic `ADD` có điều kiện), TTL tự dọn.
+- Hạn mức hiển thị trên UI: **10 link/phút/IP** (`POST /shorten`); `GET /{code}` 300/phút/IP (`REDIRECT_RATE_LIMIT`, đặt `0` để tắt).
 - Vượt → `429 { error: { code: "rate_limited", retry_after: <s> } }` + header `Retry-After` (TV2 mock đã đọc `retry_after`).
 - Dùng **DynamoDB atomic counter + TTL**, không dùng memory-local (Lambda scale nhiều instance).
 
@@ -155,7 +157,7 @@ ApiGateway:
 
 ### 3.2. Thiết kế tích hợp async + caching (không làm chậm redirect)
 
-**Nguyên tắc vàng:** luồng redirect nóng (`GET /{code}`) **không bao giờ** gọi GSB/URLhaus đồng bộ. Mọi lookup mạng ra ngoài chỉ xảy ra ở **luồng tạo (async)** và **worker re-scan**, kết quả lưu cache → redirect chỉ đọc 1 item DynamoDB.
+**Nguyên tắc vàng:** luồng redirect nóng (`GET /{code}`) **không bao giờ** gọi GSB/URLhaus đồng bộ. Mọi lookup mạng ra ngoài chỉ xảy ra ở **luồng tạo** → redirect chỉ đọc 1 item DynamoDB.
 
 ```
 POST /shorten ─▶ validate nhanh (regex/host/own-domain/IP-literal/DNS) ─▶ ghi urls status=pending/active
@@ -172,7 +174,7 @@ Worker định kỳ (EventBridge 6h) ─▶ re-scan top/active links ─▶ cậ
 1. **Tại `POST /shorten`:** chạy validate đồng bộ rẻ (< 20 ms, xem `threat_model.md` §4). Sau đó trả `201` ngay (UX nhanh), bắn event scan async (SQS `scan-queue` + DLQ, hoặc Streams). Nếu cần chặn cứng (ví dụ trùng blocklist nội bộ) → trả `blocked_domain` đồng bộ luôn.
 2. **Scanner Lambda:** gom batch (GSB hỗ trợ nhiều `threatInfoEntries`/request), timeout 10s, retry exponential + jitter, circuit-breaker (ngắt 5 phút khi 429/5xx liên tục). Cache verdict theo **SHA256(canonical URL)** trong DynamoDB `blocklist`/`verdict_cache` với TTL (sạch: 24h; độc: 7–30 ngày) → lần sau không lookup lại.
 3. **Hiển thị:** link `pending` vẫn redirect bình thường cho đến khi có verdict (hoặc chặn mềm `suspicious` nếu heuristic nghi). Quyết định Week 2: nhóm khuyến nghị **mặc định active + re-check 5–30s sau**, chỉ chặn đồng bộ khi blocklist nội bộ trúng (độ trễ < 5 ms).
-4. **Re-scan:** EventBridge cron 6h quét link `active` + top-click; domain hết hạn/đổi IP → verdict mới. Ghi `updated_at`, giữ lịch sử verdict 30 ngày cho audit.
+4. **Re-scan:** chưa triển khai. Hướng đã chốt: quét link `active` + top-click định kỳ (EventBridge cron) để phát hiện domain hết hạn/đổi IP → verdict mới.
 5. **Không để lộ key:** GSB key + Turnstile secret trong **SSM SecureString / Secrets Manager**, Lambda đọc qua env + IAM least-privilege; không log key/verdict thô.
 
 **Pseudo-code Lambda (Python, khớp `backend/prototype.py` style):**
@@ -331,13 +333,23 @@ def dns_all_private(host: str) -> bool | None:
 
 ---
 
-## 6. Lộ trình triển khai Week 2 (đề xuất thứ tự)
+## 6. Trạng thái triển khai
 
-1. **Foundation:** chạy `scripts/setup_aws_foundation.sh` (IAM least-privilege + MFA + Budget $5) → WAF Web ACL `us-east-1` + logging (Terraform `terraform/foundation.tf`).
-2. **Lambda:** ghép `validate_url` 2 lớp + Turnstile verify + token-bucket `rate_limits` vào `POST /shorten`; header `302 + no-store` cho redirect.
-3. **Async scan:** SQS + scanner (GSB + URLhaus) + `verdict_cache` + EventBridge re-scan 6h.
-4. **CloudFront behaviors** (no-cache `/{code}` + `/api/*`, forward country header) + khóa origin trực tiếp.
-5. **Alarms:** WAF-blocked, 5xx, throttle, billing; Count→Block cho CRS sau 1 tuần log.
+| Hạng mục | Trạng thái | Nơi triển khai |
+|---|---|---|
+| IAM least-privilege theo vai trò + MFA + Budget $5 | ✅ xong | `scripts/setup_aws_foundation.sh`, `terraform/foundation.tf` |
+| Validate URL 2 lớp (cú pháp + DNS) | ✅ xong | `backend/src/linkpulse/validation.py` |
+| Token-bucket `rate_limits` theo IP | ✅ xong | `backend/src/linkpulse/ratelimit.py` |
+| Turnstile verify server-side | ✅ xong, **đang tắt** | `backend/src/linkpulse/turnstile.py` |
+| Google Safe Browsing lúc tạo | ✅ xong, **đang tắt** | `backend/src/linkpulse/reputation.py` |
+| Tra blocklist theo host + domain cha | ✅ xong | `backend/src/linkpulse/reputation.py` |
+| Gắn cờ link `suspicious` từ pipeline analytics | ✅ xong | `backend/src/linkpulse/abuse.py` |
+| CloudFront behaviors + `X-Origin-Verify` | ✅ xong | `infra/edge.yaml`, `backend/src/linkpulse/origin.py` |
+| WAF Web ACL (bật/tắt bằng `EnableWaf`) | ✅ xong, **đang tắt** | `infra/edge.yaml` |
+| Chặn/gỡ chặn domain bằng script | ✅ xong | `scripts/blocklist.sh`, `scripts/blocklist.ps1` |
+| Alarm DLQ + CI (`pytest`, `cfn-lint`) | ✅ xong | `backend/template.yaml`, `.github/workflows/ci.yml` |
+| Scanner async + `verdict_cache` + re-scan định kỳ | ❌ chưa làm | không có trong code hiện tại |
+| Bot Control (WAF), Cognito/JWT | ❌ ngoài phạm vi | — |
 
 ---
 
@@ -349,4 +361,4 @@ def dns_all_private(host: str) -> bool | None:
 - Google Safe Browsing API v4 (`threatMatches:find`); abuse.ch URLhaus API (`/v1/url/`).
 - Cloudflare Turnstile (client + `siteverify`).
 - OWASP: Input Validation Cheat Sheet, SSRF Prevention, CAPTCHA guidance.
-- Tài liệu nhóm: `docs/api_spec.yaml`, `backend/prototype.py`, `docs/threat_model.md`, `docs/architecture.md`.
+- Tài liệu nhóm: `docs/api_spec.yaml`, `backend/src/linkpulse/`, `docs/threat_model.md`, `docs/architecture.md`.
