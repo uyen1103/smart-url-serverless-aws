@@ -57,7 +57,7 @@ Tài liệu chi tiết: [`docs/architecture.md`](docs/architecture.md), [`docs/t
 | `infra/edge.yaml` | Stack biên: CloudFront, S3 giao diện, WAF (bật/tắt bằng tham số) |
 | `frontend/` | Giao diện tĩnh, script nạp lên S3 |
 | `database/` | Script tạo bảng DynamoDB và tài liệu schema |
-| `scripts/` | Script vận hành: IAM nền tảng, quản lý blocklist |
+| `scripts/` | Script vận hành: kiểm tra tài khoản, IAM nền tảng, quản lý blocklist |
 | `terraform/` | AWS Budget |
 | `docs/` | Tài liệu kiến trúc, bảo mật, quyết định chung của nhóm |
 | `tests/` | Test dùng chung (pytest + moto) |
@@ -100,6 +100,15 @@ project; TV1 đã bị chặn ở `ap-southeast-1`). Mọi thành viên chạy:
 aws configure set region ap-southeast-2
 ```
 
+Kiểm tra tài khoản trước khi làm bất cứ việc gì (chỉ đọc, không tạo tài nguyên):
+
+```bash
+./scripts/preflight.sh
+```
+
+Lệnh này cho biết trước Region nào bị chặn bởi service control policy, CloudFront/WAF có dùng
+được không, và budget đã tồn tại chưa — tránh mất thời gian deploy rồi mới biết bị chặn.
+
 Cấp quyền và tạo IAM user cho từng người:
 
 ```bash
@@ -109,7 +118,9 @@ Cấp quyền và tạo IAM user cho từng người:
   --region ap-southeast-2 --budget 5
 ```
 
-Sau đó mỗi người tự bật MFA và tự tạo access key của mình.
+Xem trước thay đổi mà không thực thi: thêm `--dry-run`.
+
+Sau đó mừng thành viên tự bật MFA và tự tạo access key của mình.
 
 ### Bước 1 — Deploy backend (lần 1)
 
@@ -208,6 +219,16 @@ chạy thật. Tên bảng được tra tự động từ output của stack bac
 | TV3 — Database | Dung lượng, TTL, GSI của DynamoDB | Cấu hình trong `backend/template.yaml` |
 | TV4 — Analytics | Pipeline Streams → `process_clicks`, alarm | Kiểm chứng bằng click thật |
 | TV5 — Security & DevOps | CloudFront, WAF, SSM, IAM, CI | Stack edge (`infra/edge.yaml`), script IAM, GitHub Actions |
+
+Vai trò trong nhóm:
+
+| Module | Người phụ trách | GitHub |
+|---|---|---|
+| TV1 — Backend | Trần Hữu Nam | `namth0411-netizen` |
+| TV2 — Frontend | Nguyễn Thảo Uyên | `uyen1103` |
+| TV3 — Database | Lâm Văn Hậu | `lamvanhau202101-a11y` |
+| TV4 — Analytics | Đoàn Lê Hồng Yến | `doanlehongyen` |
+| TV5 — Security & DevOps | Liam Nguyễn | `piupear206-oss` |
 
 Quyết định chung của nhóm (Region, thứ tự deploy, ngưỡng chống lạm dụng, quyền IAM) nằm ở
 [`docs/QUYET_DINH_CHOT_TUAN_2.md`](docs/QUYET_DINH_CHOT_TUAN_2.md). Đóng góp theo
