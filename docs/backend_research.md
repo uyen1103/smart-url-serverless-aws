@@ -199,7 +199,7 @@ python -m pytest tests -v        # test (pytest có trong requirements.txt)
 
 ## 6. Cài SAM CLI và deploy hello-world
 
-File: `backend/template.yaml`, `backend/hello/app.py`. Repo đã có `.gitignore` (đã bỏ qua `.aws-sam/` và `__pycache__/`), không cần thêm.
+File (tuần 1): `template.yaml` và `hello/app.py` của bản hello-world. Từ tuần 2, `backend/template.yaml` là template backend thật và `backend/hello/` đã xóa (bản hello-world nằm trong lịch sử Git). Repo đã có `.gitignore` (đã bỏ qua `.aws-sam/` và `__pycache__/`), không cần thêm.
 
 ### 6.1 Các bước
 1. Cài **AWS CLI** và **AWS SAM CLI** theo hướng dẫn chính thức cho hệ điều hành đang dùng; kiểm tra:

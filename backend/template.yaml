@@ -132,10 +132,14 @@ Resources:
       Timeout: 10                # có gọi DNS, Turnstile, Safe Browsing
       Policies:
         - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
-        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref RateLimitsTable}
-        - DynamoDBReadPolicy: {TableName: !Ref BlocklistTable}
-        - DynamoDBWritePolicy: {TableName: !Ref StatsTable}   # bộ đếm flagged_links
+        # Quyền DynamoDB tối thiểu, đo từ thao tác thật của handler (tests/test_handlers_iam_policy.py kiểm tra lại)
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: dynamodb:PutItem, Resource: !GetAtt UrlsTable.Arn}                   # tạo link
+            - {Effect: Allow, Action: dynamodb:Query, Resource: !Sub '${UrlsTable.Arn}/index/*'}           # tìm link cũ qua owner-index
+            - {Effect: Allow, Action: dynamodb:UpdateItem, Resource: !GetAtt RateLimitsTable.Arn}          # rate limit
+            - {Effect: Allow, Action: dynamodb:UpdateItem, Resource: !GetAtt StatsTable.Arn}               # bộ đếm flagged_links
+            - {Effect: Allow, Action: dynamodb:BatchGetItem, Resource: !GetAtt BlocklistTable.Arn}         # kiểm tra blocklist
         # Tên tham số SSM bắt đầu bằng "/" nên nối thẳng vào ARN (.../parameter/linkpulse/x)
         - !If
           - HasTurnstile
@@ -165,9 +169,11 @@ Resources:
       Description: GET /{code} - chuyển hướng và ghi click
       Policies:
         - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
-        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
-        - DynamoDBWritePolicy: {TableName: !Ref ClicksTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref RateLimitsTable}
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: [dynamodb:GetItem, dynamodb:UpdateItem], Resource: !GetAtt UrlsTable.Arn}   # đọc link, đếm click
+            - {Effect: Allow, Action: dynamodb:PutItem, Resource: !GetAtt ClicksTable.Arn}                        # ghi click event
+            - {Effect: Allow, Action: dynamodb:UpdateItem, Resource: !GetAtt RateLimitsTable.Arn}                 # rate limit
       Events:
         Redirect:
           Type: HttpApi
@@ -181,9 +187,14 @@ Resources:
       Timeout: 15                # xóa link kèm dọn dữ liệu thống kê
       Policies:
         - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
-        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref ClicksTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref StatsTable}
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: [dynamodb:GetItem, dynamodb:UpdateItem], Resource: !GetAtt UrlsTable.Arn}   # xóa mềm link
+            - {Effect: Allow, Action: dynamodb:Query, Resource: !Sub '${UrlsTable.Arn}/index/*'}                  # liệt kê link của owner
+            # Dọn click và thống kê của link bị xóa: Query rồi xóa hàng loạt (BatchWriteItem kèm DeleteItem cho chắc chắn)
+            - Effect: Allow
+              Action: [dynamodb:Query, dynamodb:BatchWriteItem, dynamodb:DeleteItem]
+              Resource: [!GetAtt ClicksTable.Arn, !GetAtt StatsTable.Arn]
       Events:
         List:
           Type: HttpApi
@@ -199,9 +210,11 @@ Resources:
       Description: GET /api/stats, GET /api/stats/{code}
       Policies:
         - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
-        - DynamoDBReadPolicy: {TableName: !Ref UrlsTable}
-        - DynamoDBReadPolicy: {TableName: !Ref ClicksTable}
-        - DynamoDBReadPolicy: {TableName: !Ref StatsTable}
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: dynamodb:GetItem, Resource: !GetAtt UrlsTable.Arn}
+            - {Effect: Allow, Action: dynamodb:Query, Resource: !GetAtt ClicksTable.Arn}
+            - {Effect: Allow, Action: [dynamodb:GetItem, dynamodb:Query], Resource: !GetAtt StatsTable.Arn}
       Events:
         Global:
           Type: HttpApi
@@ -231,8 +244,10 @@ Resources:
       Description: Stream clicks -> stats theo phút + gắn cờ link bất thường
       Timeout: 30
       Policies:
-        - DynamoDBCrudPolicy: {TableName: !Ref StatsTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem], Resource: !GetAtt StatsTable.Arn}
+            - {Effect: Allow, Action: dynamodb:UpdateItem, Resource: !GetAtt UrlsTable.Arn}       # gắn cờ link đáng ngờ
         - SQSSendMessagePolicy: {QueueName: !GetAtt ClickDeadLetterQueue.QueueName}
       Events:
         ClickStream:
