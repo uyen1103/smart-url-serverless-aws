@@ -100,7 +100,38 @@ project; TV1 đã bị chặn ở `ap-southeast-1`). Mọi thành viên chạy:
 aws configure set region ap-southeast-2
 ```
 
-Kiểm tra tài khoản trước khi làm bất cứ việc gì (chỉ đọc, không tạo tài nguyên):
+#### 0.1. Tạo IAM user quản trị tạm
+
+Cần một user có quyền `iam:*` và `budgets:*` để chạy script cấp quyền. Tạo user tạm, dùng xong
+xoá — không dùng key của root.
+
+Trên AWS Console ([IAM Users](https://console.aws.amazon.com/iam/home#/users)):
+
+1. **Create user** → tên `linkpulse-setup` → không bật console access → Next
+2. **Permissions** → **Attach policies** → tìm `AdministratorAccess` → **Next**
+3. **Tags** → `Key=Project, Value=LinkPulse`, `Key=Owner, Value=tv5` → Next → Create
+4. Vào user `linkpulse-setup` → **Security credentials** → **Create access key** → copy key
+
+Nhập vào CLI:
+
+```bash
+aws configure
+# AWS Access Key ID: AKIA...
+# AWS Secret Access Key: ...
+# Default region name: ap-southeast-2
+# Default output format: json
+```
+
+Kiểm tra:
+
+```bash
+aws sts get-caller-identity
+```
+
+Ra `Account` và `Arn` là được. Nếu báo `Unable to locate credentials` thì key sai hoặc chưa
+`aws configure`.
+
+#### 0.2. Kiểm tra tài khoản trước khi làm gì
 
 ```bash
 ./scripts/preflight.sh
@@ -109,8 +140,9 @@ Kiểm tra tài khoản trước khi làm bất cứ việc gì (chỉ đọc, k
 Lệnh này cho biết trước Region nào bị chặn bởi service control policy, CloudFront/WAF có dùng
 được không, và budget đã tồn tại chưa — tránh mất thời gian deploy rồi mới biết bị chặn.
 
-Cấp quyền và tạo IAM user cho từng người. Cách gắn email trực tiếp theo từng người, không phải nhớ
-thứ tự:
+#### 0.3. Cấp quyền cho 5 thành viên
+
+Cách gắn email trực tiếp theo từng người, không phải nhớ thứ tự:
 
 ```bash
 ./scripts/setup_aws_foundation.sh \
@@ -122,6 +154,8 @@ thứ tự:
   --region ap-southeast-2 --budget 5
 ```
 
+Xem trước thay đổi mà không thực thi: thêm `--dry-run`.
+
 Bảng ánh xạ:
 
 | Thành viên | Module | Email | IAM user | Vai trò |
@@ -132,9 +166,41 @@ Bảng ánh xạ:
 | Đoàn Lê Hồng Yến | TV4 Analytics | yendoan20062020@gmail.com | `linkpulse-tv4` | reader |
 | Liam Nguyễn | TV5 Security & DevOps | liemnt0773@ut.edu.vn | `linkpulse-tv5` | deployer |
 
-Xem trước thay đổi mà không thực thi: thêm `--dry-run`.
+Kiểm tra kết quả:
 
-Sau đó mừng thành viên tự bật MFA và tự tạo access key của mình.
+```bash
+aws iam get-group --group-name linkpulse-devs
+aws iam list-attached-user-policies --user-name linkpulse-tv1
+aws iam list-attached-user-policies --user-name linkpulse-tv3
+```
+
+#### 0.4. Xoá user quản trị tạm
+
+```bash
+aws iam delete-access-key --user-name linkpulse-setup --access-key-id <ACCESS_KEY_ID>
+aws iam detach-user-policy --user-name linkpulse-setup --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+aws iam delete-user --user-name linkpulse-setup
+```
+
+Sau bước này không còn user nào có `AdministratorAccess` trong nhóm.
+
+#### 0.5. Gửi thông tin cho 5 người
+
+Gửi cho mỗi người một tin nhắn, mẫu:
+
+> Chào bạn, tài khoản AWS chung của nhóm đã sẵn sàng cho bạn.
+>
+> 1. AWS Console → IAM → Users → `linkpulse-tv<N>` → **Security credentials** → **Assign MFA device**
+>    (bắt buộc, chọn TOTP với app Google Authenticator)
+> 2. Sau khi bật MFA xong mới tạo **Access key** (Create access key)
+> 3. Trên máy chạy:
+>    ```
+>    aws configure set region ap-southeast-2
+>    aws configure
+>    ```
+> 4. Kiểm tra email budget đã về hộp thư của bạn chưa (kiểm tra cả Spam)
+
+Mỗi người tự bật MFA và tự tạo key của mình — không chia sẻ key.
 
 ### Bước 1 — Deploy backend (lần 1)
 
@@ -251,3 +317,19 @@ deploy edge; TV2 chỉ ghi bucket giao diện và tạo invalidation CloudFront;
 Quyết định chung của nhóm (Region, thứ tự deploy, ngưỡng chống lạm dụng, quyền IAM) nằm ở
 [`docs/QUYET_DINH_CHOT_TUAN_2.md`](docs/QUYET_DINH_CHOT_TUAN_2.md). Đóng góp theo
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Link AWS Console
+
+| Việc | Đường dẫn | Region trong console |
+|---|---|---|
+| Tạo access key | [Security credentials](https://console.aws.amazon.com/iam/home#/security_credentials) | — |
+| IAM user, gán quyền, bật MFA | [IAM Users](https://console.aws.amazon.com/iam/home#/users) | — |
+| Region cố định của tài khoản | [settings.aws.com](https://settings.aws.com) → mục Project | — |
+| CloudFront | [CloudFront distributions](https://console.aws.amazon.com/cloudfront/v4/home) | toàn cục |
+| WAF Web ACL | [WAF web ACLs](https://console.aws.amazon.com/wafv2/homev2/web-acls) | **N. Virginia** |
+| CloudWatch metrics | [CloudWatch metrics](https://console.aws.amazon.com/cloudwatch/home) → Metrics | `ap-southeast-2` |
+| DynamoDB | [DynamoDB tables](https://console.aws.amazon.com/dynamodbv2/home) | `ap-southeast-2` |
+| Budget | [Budgets](https://console.aws.amazon.com/billing/home#/budgets) | toàn cục |
+
+CloudFront và WAF luôn nằm ở `us-east-1` (N. Virginia) — đó là lý do stack edge deploy riêng ở
+Region đó. Metric của Lambda/DynamoDB thì ở `ap-southeast-2`.
