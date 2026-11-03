@@ -55,19 +55,23 @@ def list_owner_links(owner_id):
 
 def register_click(code, max_clicks):
     """Tăng click_count nguyên tử. Có max_clicks thì chỉ tăng khi chưa đạt giới hạn
-    (tránh vượt giới hạn khi nhiều request đồng thời). False nếu đã đạt giới hạn."""
+    (tránh vượt giới hạn khi nhiều request đồng thời). False nếu đã đạt giới hạn.
+    Bị DynamoDB throttle thì ghi cảnh báo và coi như chưa đạt giới hạn (True): người dùng vẫn được chuyển hướng,
+    chỉ mất một lượt đếm (và với link có max_clicks, giới hạn có thể bị vượt đôi chút trong lúc throttle)."""
     cond = "attribute_exists(short_code)"
     values = {":one": 1}
     if max_clicks is not None:
         cond += " AND (attribute_not_exists(click_count) OR click_count < :max)"
         values[":max"] = int(max_clicks)
     try:
-        db.urls().update_item(Key={"short_code": code}, UpdateExpression="ADD click_count :one",
-                              ConditionExpression=cond, ExpressionAttributeValues=values)
+        db.urls(best_effort=True).update_item(Key={"short_code": code}, UpdateExpression="ADD click_count :one",
+                                              ConditionExpression=cond, ExpressionAttributeValues=values)
         return True
     except ClientError as e:
         if _cond_failed(e):
             return False
+        if db.throttled(e, "register_click"):
+            return True
         raise
 
 
