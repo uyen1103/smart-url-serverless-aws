@@ -92,15 +92,17 @@ Test handler: `tests/test_handlers_*.py`; kiểm tra spec khớp backend: `tests
 | `IpHashSalt` | không có (bắt buộc, >= 16 ký tự) | nhập | **cùng giá trị** | Đổi salt làm đếm khách duy nhất đứt đoạn. Không đưa vào Git |
 | `BaseUrl` | `https://linkpulse.vn` | mặc định (tạm) | `https://<domain>.cloudfront.net` | Dựng `short_url`; không có `/` cuối |
 | `OwnDomains` | `linkpulse.vn` | mặc định (tạm) | `<domain>.cloudfront.net` | URL trỏ về các domain này bị từ chối (chống vòng lặp); nhiều domain cách nhau dấu phẩy |
-| `ErrorPageMode` | `json` | `json` | `redirect` | `redirect` = trình duyệt được 302 sang `error.html`/`warning.html`. Quyết định tuần 2 mục 3 sẽ đổi mặc định thành `redirect` trong PR sửa template |
+| `ErrorPageMode` | `redirect` | mặc định | mặc định | `redirect` = trình duyệt được 302 sang `error.html`/`warning.html` (quyết định tuần 2 mục 3); `json` = lỗi JSON đúng spec, chỉ dùng khi chạy API riêng không có giao diện |
 | `OriginVerifySecretParam` | trống (tắt) | trống | `/linkpulse/origin-verify` | Bật kiểm tra `X-Origin-Verify`. Chỉ bật khi CloudFront đã tồn tại, nếu không mọi request bị 403 |
 | `TurnstileSecretParam` | trống (tắt) | tùy chọn | tùy chọn | Tên SSM SecureString chứa secret Turnstile. Không phải dịch vụ AWS, không tính là lớp bảo vệ chính |
 | `SafeBrowsingKeyParam` | trống (tắt) | tùy chọn | tùy chọn | Tương tự (Google Safe Browsing) |
 | `CorsOrigin` | `*` | | | Chạy cùng domain sau CloudFront thì không cần CORS |
 | `RedirectRateLimit` | 300 | | | Lượt redirect tối đa mỗi IP mỗi phút (0 = tắt) |
+| `SpikeClicksPerMinute` | 300 | mặc định | mặc định | Link vượt số click/phút này bị gắn `suspicious`. Chỉ `process_clicks` dùng. **Khi demo deploy với 30** (cần khoảng 30 lệnh `curl`) |
+| `BotMinClicks` | 50 | mặc định | mặc định | Số click/phút tối thiểu để xét tỷ lệ bot (>= 80%). Chỉ `process_clicks` dùng. **Khi demo deploy với 10** |
 
-**Sắp thêm (chưa có trong `template.yaml` cho tới khi PR template của TV1 merge, cập nhật bảng này sau đó):**
-`SpikeClicksPerMinute` (300) và `BotMinClicks` (50) theo quyết định #7, khi demo deploy với 30 và 10; đổi mặc định `ErrorPageMode` thành `redirect`.
+Mỗi Lambda có một log group tạo sẵn trong template, giữ log **7 ngày** (`RetentionInDays: 7`) để không tốn phí lưu trữ.
+Sau khi demo, deploy lại với giá trị mặc định của hai ngưỡng (300 và 50).
 
 ### Dung lượng DynamoDB (`BillingMode=PROVISIONED`, quyết định #2)
 
@@ -146,7 +148,8 @@ sam deploy -t ../infra/edge.yaml --region us-east-1 --stack-name linkpulse-edge 
 # 4. LẦN 2: deploy lại backend với domain CloudFront. Truyền đủ mọi tham số, IpHashSalt PHẢI giống lần 1
 sam deploy --parameter-overrides \
   IpHashSalt="$SALT" BaseUrl=https://<DistributionDomain> OwnDomains=<DistributionDomain> \
-  ErrorPageMode=redirect OriginVerifySecretParam=/linkpulse/origin-verify
+  OriginVerifySecretParam=/linkpulse/origin-verify
+#    (ErrorPageMode mặc định đã là redirect. Khi demo thêm: SpikeClicksPerMinute=30 BotMinClicks=10)
 
 # 5. Đưa giao diện lên S3 (TV2) và kiểm tra
 aws s3 sync <thư mục giao diện> s3://<FrontendBucketName>
@@ -173,9 +176,8 @@ tốn credit. Chỉ chạy tải lớn trên moto hoặc DynamoDB Local, không 
 - **`flagged_links`** là bộ đếm tăng dần; chưa giảm khi link được gỡ cờ (chưa có API quản trị).
 - **Danh tính** hiện là `X-Owner-Id` (UUID do frontend sinh) đúng theo spec, nên không phải xác thực thật.
   Cần Cognito/JWT authorizer nếu có tài khoản.
-- **Lỗi redirect trên trình duyệt**: mặc định trong template hiện là JSON đúng spec; khi chạy cùng giao diện qua
-  CloudFront dùng `ErrorPageMode=redirect` (đã chốt ở quyết định tuần 2 mục 3) để trình duyệt được 302 sang
-  `/error.html` hoặc `/warning.html`. Lỗi 429 luôn là JSON.
+- **Lỗi redirect trên trình duyệt**: mặc định trong template là `ErrorPageMode=redirect` (quyết định tuần 2 mục 3), nên
+  trình duyệt được 302 sang `/error.html` hoặc `/warning.html`. Đặt `json` nếu cần lỗi JSON thuần. Lỗi 429 luôn là JSON.
 - **DynamoDB bị throttle** (bảng provisioned hết WCU/RCU): rate limit, đếm click và ghi click event **fail-open**,
   ghi cảnh báo `DYNAMODB_THROTTLED` rồi cho request đi tiếp thay vì 500 (mất vài lượt đếm, có thể vượt rate limit
   đôi chút). Đọc/ghi link vẫn lỗi thật. Các thao tác này chỉ thử lại 2 lần (chờ ~0,15 giây) thay vì mặc định 10 lần
