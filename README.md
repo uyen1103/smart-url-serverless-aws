@@ -93,12 +93,37 @@ IAM user riêng (`linkpulse-<tên>`) và bắt buộc MFA.
 
 ### Bước 0 — Chuẩn bị tài khoản (chỉ làm một lần)
 
-Region workload đã chốt là `ap-southeast-2` (tài khoản Free plan kiểu mới bị AWS ghim Region theo
-project; TV1 đã bị chặn ở `ap-southeast-1`). Mọi thành viên chạy:
+Region workload đã chốt là `ap-southeast-2`. Mọi thành viên chạy:
 
 ```bash
 aws configure set region ap-southeast-2
 ```
+
+#### 0.0. Loại tài khoản: bắt buộc là "Sign up for AWS (advanced)"
+
+AWS có hai luồng đăng ký. Nhóm **phải dùng tài khoản advanced**, không dùng tài khoản kiểu
+"new" (Builder ID + project):
+
+| Nhu cầu của nhóm | Advanced | Kiểu "new" |
+|---|---|---|
+| IAM user / group / managed policy tùy chỉnh, bắt buộc MFA | Có | Không |
+| AWS WAF gắn với CloudFront (scope CLOUDFRONT, `us-east-1`) | Có | Không |
+| Tự chọn Region | Có | Không — bị ghim theo nước |
+| AWS Organizations, IAM Access Analyzer | Có | Không |
+
+Lý do kỹ thuật: tài khoản kiểu "new" ghim region theo nước (Việt Nam → `ap-southeast-2`) và chặn
+những tính năng tạo tài nguyên ngoài region đó — trong đó có AWS WAF đi kèm CloudFront. Kiến trúc
+LinkPulse cần cả WAF+CloudFront lẫn IAM group `linkpulse-devs`, nên tài khoản advanced là bắt buộc.
+
+Nếu tài khoản đã tạo theo kiểu "new", vào AWS Settings → Projects → **Explore advanced features**
+để kích hoạt (không hoàn tác được, và phải nâng lên Paid Plan trước).
+
+Về việc đăng ký từ Việt Nam: AWS có hỗ trợ (`VN` thuộc nhóm region `ap-southeast-2`), nhưng bước
+xác minh số điện thoại ở một số luồng đăng ký có thể từ chối mã quốc gia `+84`. Khi bị từ chối,
+mở support case tại https://support.console.aws.amazon.com/support/home → **Create case** →
+Service: *Account and billing* → Category: *Account activation* → Severity: *Urgent business
+impacting question* → **Contact us → Chat**, nêu rõ email root user và số điện thoại đã nhập.
+AWS có thể kích hoạt thủ công kể cả khi tài khoản chưa kích hoạt được.
 
 #### 0.1. Tạo IAM user quản trị tạm
 
