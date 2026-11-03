@@ -54,13 +54,23 @@ Parameters:
     Description: Origin được phép gọi API từ trình duyệt (khi chạy sau CloudFront cùng domain thì không cần CORS)
   ErrorPageMode:
     Type: String
-    Default: json
+    Default: redirect
     AllowedValues: [json, redirect]
-    Description: json = trả lỗi JSON đúng spec; redirect = 302 sang error.html/warning.html cho trình duyệt
+    Description: redirect = 302 sang error.html/warning.html cho trình duyệt (mặc định, chạy cùng giao diện); json = trả lỗi JSON đúng spec
   RedirectRateLimit:
     Type: Number
     Default: 300
     Description: Số lượt redirect tối đa mỗi IP mỗi phút (0 = tắt)
+  SpikeClicksPerMinute:
+    Type: Number
+    Default: 300
+    MinValue: 1
+    Description: Số click/phút của một link để bị gắn cờ suspicious (lưu lượng tăng vọt). Khi demo deploy với 30
+  BotMinClicks:
+    Type: Number
+    Default: 50
+    MinValue: 1
+    Description: Số click/phút tối thiểu của một link để bắt đầu xét tỷ lệ bot (>= 80% thì gắn cờ). Khi demo deploy với 10
 
 Conditions:
   UseProvisionedBilling: !Equals [!Ref BillingMode, PROVISIONED]
@@ -243,6 +253,10 @@ Resources:
       Handler: handlers.process_clicks.lambda_handler
       Description: Stream clicks -> stats theo phút + gắn cờ link bất thường
       Timeout: 30
+      Environment:
+        Variables:               # ngưỡng phát hiện lạm dụng, chỉ hàm này dùng (gộp với Globals)
+          SPIKE_CLICKS_PER_MINUTE: !Ref SpikeClicksPerMinute
+          BOT_MIN_CLICKS: !Ref BotMinClicks
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -266,6 +280,38 @@ Resources:
               OnFailure:
                 Type: SQS
                 Destination: !GetAtt ClickDeadLetterQueue.Arn
+
+  # Log group tạo sẵn để giữ log 7 ngày (mặc định của Lambda là không bao giờ xóa, tốn phí lưu trữ)
+  ShortenLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ShortenFunction}"
+      RetentionInDays: 7
+  RedirectLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${RedirectFunction}"
+      RetentionInDays: 7
+  LinksLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LinksFunction}"
+      RetentionInDays: 7
+  StatsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${StatsFunction}"
+      RetentionInDays: 7
+  HealthLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${HealthFunction}"
+      RetentionInDays: 7
+  ProcessClicksLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ProcessClicksFunction}"
+      RetentionInDays: 7
 
   ClickDeadLetterQueue:
     Type: AWS::SQS::Queue
