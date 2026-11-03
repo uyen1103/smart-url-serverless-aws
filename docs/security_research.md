@@ -33,7 +33,7 @@ Hệ thống dùng **API Gateway HTTP API** (rẻ, trễ thấp — TV1 §2). H�
 - HTTP API **không có** API key / usage plan (chỉ REST API có).
 - → **Mọi chính sách WAF phải đặt ở CloudFront** (distribution phía trước, trỏ behavior `/api/*` → API Gateway, `/{code}` → redirect backend), scope **`CLOUDFRONT`**.
 
-> **Quy tắc vùng (bắt buộc):** Web ACL cho CloudFront **luôn tạo ở Region `us-east-1` (N. Virginia)** bất kể distribution và origin ở đâu (`ap-southeast-1/2`). Tạo ở region khác sẽ không attach được vào distribution. CloudFormation/SAM deploy Web ACL với `Scope: CLOUDFRONT` phải chạy ở `us-east-1`; các tài nguyên còn lại ở `ap-southeast-1` (Singapore — region nhóm đã thống nhất, lưu ý tài khoản Free-plan kiểu mới bị cố định region theo project, xem TV1 §6.2).
+> **Quy tắc vùng (bắt buộc):** Web ACL cho CloudFront **luôn tạo ở Region `us-east-1` (N. Virginia)** bất kể distribution và origin ở đâu (`ap-southeast-1/2`). Tạo ở region khác sẽ không attach được vào distribution. CloudFormation/SAM deploy Web ACL với `Scope: CLOUDFRONT` phải chạy ở `us-east-1`; các tài nguyên còn lại ở `ap-southeast-2` (Sydney — region nhóm đã thống nhất, lưu ý tài khoản Free-plan kiểu mới bị cố định region theo project, xem TV1 §6.2).
 
 Kiến trúc gắn kết:
 
