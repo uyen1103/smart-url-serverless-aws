@@ -162,6 +162,12 @@ Ra `Account` và `Arn` là được. Nếu báo `Unable to locate credentials` t
 ./scripts/preflight.sh
 ```
 
+Trên Windows:
+
+```powershell
+.\scripts\preflight.ps1
+```
+
 Lệnh này cho biết trước Region nào bị chặn bởi service control policy, CloudFront/WAF có dùng
 được không, và budget đã tồn tại chưa — tránh mất thời gian deploy rồi mới biết bị chặn.
 
@@ -179,7 +185,15 @@ Cách gắn email trực tiếp theo từng người, không phải nhớ thứ 
   --region ap-southeast-2 --budget 5
 ```
 
-Xem trước thay đổi mà không thực thi: thêm `--dry-run`.
+Trên Windows:
+
+```powershell
+.\scripts\setup_aws_foundation.ps1 `
+  -Member @("tv1=kinkit784@gmail.com", "tv2=nguyenuyen2017tn@gmail.com", "tv3=lamvanhau202101@gmail.com", "tv4=yendoan20062020@gmail.com", "tv5=liemnt0773@ut.edu.vn") `
+  -Region ap-southeast-2 -Budget 5
+```
+
+Xem trước thay đổi mà không thực thi: thêm `--dry-run` (bash) hoặc `-DryRun` (PowerShell).
 
 Bảng ánh xạ:
 
