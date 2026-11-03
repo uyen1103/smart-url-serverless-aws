@@ -109,16 +109,20 @@ Kiểm tra tài khoản trước khi làm bất cứ việc gì (chỉ đọc, k
 Lệnh này cho biết trước Region nào bị chặn bởi service control policy, CloudFront/WAF có dùng
 được không, và budget đã tồn tại chưa — tránh mất thời gian deploy rồi mới biết bị chặn.
 
-Cấp quyền và tạo IAM user cho từng người:
+Cấp quyền và tạo IAM user cho từng người. Cách gắn email trực tiếp theo từng người, không phải nhớ
+thứ tự:
 
 ```bash
 ./scripts/setup_aws_foundation.sh \
-  --members "tv1,tv2,tv3,tv4,tv5" \
-  --emails "kinkit784@gmail.com,nguyenuyen2017tn@gmail.com,lamvanhau202101@gmail.com,yendoan20062020@gmail.com,liemnt0773@ut.edu.vn" \
+  --member tv1=kinkit784@gmail.com \
+  --member tv2=nguyenuyen2017tn@gmail.com \
+  --member tv3=lamvanhau202101@gmail.com \
+  --member tv4=yendoan20062020@gmail.com \
+  --member tv5=liemnt0773@ut.edu.vn \
   --region ap-southeast-2 --budget 5
 ```
 
-Thứ tự email phải khớp thứ tự `--members`. Bảng ánh xạ:
+Bảng ánh xạ:
 
 | Thành viên | Module | Email | IAM user | Vai trò |
 |---|---|---|---|---|

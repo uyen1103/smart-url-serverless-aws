@@ -25,6 +25,15 @@
 #       --emails "tv1@example.com,tv2@example.com,tv3@example.com,tv4@example.com,tv5@example.com" \
 #       --region ap-southeast-2 --budget 5
 #
+#   Hoặc gắn email trực tiếp theo từng người (đỡ phải nhớ thứ tự):
+#       ./scripts/setup_aws_foundation.sh \
+#           --member tv1=kinkit784@gmail.com \
+#           --member tv2=nguyenuyen2017tn@gmail.com \
+#           --member tv3=lamvanhau202101@gmail.com \
+#           --member tv4=yendoan20062020@gmail.com \
+#           --member tv5=liemnt0773@ut.edu.vn \
+#           --region ap-southeast-2 --budget 5
+#
 #   Vai trò suy ra từ tên: tv1/tv5 -> deployer, tv2 -> frontend, tv3/tv4 -> reader.
 #   Ghi đè tường minh bằng --roles "tv1=deployer,tv5=deployer,tv2=frontend,tv3=reader,tv4=reader".
 #
@@ -39,20 +48,23 @@ BUDGET_LIMIT="5"
 MEMBERS=""
 EMAILS=""
 ROLES=""
+MEMBER_PAIRS=()
 ACCOUNT_ID=""
 DRY_RUN="false"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 usage() {
-  sed -n '2,35p' "$0"
-  echo "Options: --members a,b --emails a@x,b@x [--roles a=role,...] [--region R] [--edge-region R] [--budget N] [--dry-run]"
+  sed -n '2,42p' "$0"
+  echo "Options: --members a,b --emails a@x,b@x [--member a=mail ...] [--roles a=role,...]"
+  echo "         [--region R] [--edge-region R] [--budget N] [--dry-run]"
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --members)     MEMBERS="$2"; shift 2 ;;
     --emails)      EMAILS="$2"; shift 2 ;;
+    --member)      MEMBER_PAIRS+=("$2"); shift 2 ;;
     --roles)       ROLES="$2"; shift 2 ;;
     --region)      REGION="$2"; shift 2 ;;
     --edge-region) EDGE_REGION="$2"; shift 2 ;;
@@ -63,7 +75,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -z "$MEMBERS" || -z "$EMAILS" ]] && { echo "ERROR: thiếu --members/--emails"; usage; exit 1; }
+if [[ ${#MEMBER_PAIRS[@]} -gt 0 ]]; then
+  # Dạng --member ten=email: ghép thành --members/--emails để không phải nhớ thứ tự.
+  local_names=""
+  local_mails=""
+  for pair in "${MEMBER_PAIRS[@]}"; do
+    [[ "$pair" == *"="* ]] || { echo "ERROR: --member cần dạng ten=email, nhận '$pair'"; exit 1; }
+    local_names="${local_names}${pair%%=*},"
+    local_mails="${local_mails}${pair#*=},"
+  done
+  MEMBERS="${local_names%,}"
+  EMAILS="${local_mails%,}"
+fi
+
+[[ -z "$MEMBERS" || -z "$EMAILS" ]] && { echo "ERROR: thiếu --members/--emails hoặc --member"; usage; exit 1; }
 
 IFS=',' read -r -a MEMBER_ARR <<< "$MEMBERS"
 IFS=',' read -r -a EMAIL_ARR <<< "$EMAILS"
