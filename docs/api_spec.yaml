@@ -412,8 +412,8 @@ paths:
 
         Redirect luôn kèm `Cache-Control: no-store`.
 
-        **Lỗi cho trình duyệt** (đã chốt, quyết định tuần 2 mục 3): mặc định (`ErrorPageMode=json`) các trạng thái trên
-        trả lỗi JSON. Khi deploy cùng giao diện (`ErrorPageMode=redirect`) và request có `Accept: text/html`, Lambda
+        **Lỗi cho trình duyệt** (đã chốt, quyết định tuần 2 mục 3): với `ErrorPageMode=json` các trạng thái trên
+        trả lỗi JSON. Mặc định của template là `ErrorPageMode=redirect`: khi request có `Accept: text/html`, Lambda
         trả **302** tới trang ở cột cuối thay vì JSON (cũng kèm `Cache-Control: no-store`); link đáng ngờ kèm
         `&code=<mã>` để trang cảnh báo biết gọi lại `?confirm=1`. Lỗi 429 luôn là JSON.
       parameters:
