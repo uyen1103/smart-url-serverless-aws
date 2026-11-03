@@ -114,9 +114,19 @@ Cấp quyền và tạo IAM user cho từng người:
 ```bash
 ./scripts/setup_aws_foundation.sh \
   --members "tv1,tv2,tv3,tv4,tv5" \
-  --emails "tv1@...,tv2@...,tv3@...,tv4@...,tv5@..." \
+  --emails "kinkit784@gmail.com,nguyenuyen2017tn@gmail.com,lamvanhau202101@gmail.com,yendoan20062020@gmail.com,liemnt0773@ut.edu.vn" \
   --region ap-southeast-2 --budget 5
 ```
+
+Thứ tự email phải khớp thứ tự `--members`. Bảng ánh xạ:
+
+| Thành viên | Module | Email | IAM user | Vai trò |
+|---|---|---|---|---|
+| Trần Hữu Nam | TV1 Backend | kinkit784@gmail.com | `linkpulse-tv1` | deployer |
+| Nguyễn Thảo Uyên | TV2 Frontend | nguyenuyen2017tn@gmail.com | `linkpulse-tv2` | frontend |
+| Lâm Văn Hậu | TV3 Database | lamvanhau202101@gmail.com | `linkpulse-tv3` | reader |
+| Đoàn Lê Hồng Yến | TV4 Analytics | yendoan20062020@gmail.com | `linkpulse-tv4` | reader |
+| Liam Nguyễn | TV5 Security & DevOps | liemnt0773@ut.edu.vn | `linkpulse-tv5` | deployer |
 
 Xem trước thay đổi mà không thực thi: thêm `--dry-run`.
 
@@ -229,6 +239,10 @@ Vai trò trong nhóm:
 | TV3 — Database | Lâm Văn Hậu | `lamvanhau202101-a11y` |
 | TV4 — Analytics | Đoàn Lê Hồng Yến | `doanlehongyen` |
 | TV5 — Security & DevOps | Liam Nguyễn | `piupear206-oss` |
+
+Tài khoản AWS chung: một tài khoản cho cả nhóm, mỗi người có IAM user riêng theo bảng ở Bước 0.
+Quyền theo vai trò: TV1 và TV5 được `PowerUserAccess` cộng quyền tạo IAM role/policy cho SAM và
+deploy edge; TV2 chỉ ghi bucket giao diện và tạo invalidation CloudFront; TV3 và TV4 chỉ đọc.
 
 Quyết định chung của nhóm (Region, thứ tự deploy, ngưỡng chống lạm dụng, quyền IAM) nằm ở
 [`docs/QUYET_DINH_CHOT_TUAN_2.md`](docs/QUYET_DINH_CHOT_TUAN_2.md). Đóng góp theo
