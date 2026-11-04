@@ -1,42 +1,42 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  Lớp biên cho Smart URL Shortener: CloudFront + AWS WAF + S3 (giao diện).
-  Phải deploy ở us-east-1 (WAF phạm vi CLOUDFRONT và chứng chỉ ACM cho CloudFront chỉ ở đó). Có phí WAF.
+  Lop bien cho Smart URL Shortener: CloudFront + AWS WAF + S3 (giao dien).
+  Phai deploy o us-east-1 (WAF pham vi CLOUDFRONT va chung chi ACM cho CloudFront chi o do). Co phi WAF.
 
-  Định tuyến:  /api/* và /{code}  -> API Gateway (không cache, vì phải đếm từng click)
-               /assets|vendor|css|js|mock/*, mọi đường dẫn có dấu chấm (*.html, *.ico...)  -> S3 (giao diện)
+  Dinh tuyen:  /api/* va /{code}  -> API Gateway (khong cache, vi phai dem tung click)
+               /assets|vendor|css|js|mock/*, moi duong dan co dau cham (*.html, *.ico...)  -> S3 (giao dien)
                /  -> 302 sang /index.html
-  Khớp với validation.RESERVED_ALIASES ở backend: mã rút gọn không chứa dấu chấm và không trùng tên thư mục trên.
+  Khop voi validation.RESERVED_ALIASES o backend: ma rut gon khong chua dau cham va khong trung ten thu muc tren.
 
 Parameters:
   ApiDomain:
     Type: String
-    Description: Output ApiDomain của stack backend, dạng abc123.execute-api.ap-southeast-2.amazonaws.com
+    Description: Output ApiDomain cua stack backend, dang abc123.execute-api.ap-southeast-2.amazonaws.com
   OriginVerifySecret:
     Type: String
     NoEcho: true
     MinLength: 20
     Description: >
-      Bí mật dùng chung với backend (CloudFront gắn vào header X-Origin-Verify). Giá trị phải trùng với SSM
-      SecureString mà tham số OriginVerifySecretParam của backend trỏ tới. Sinh bằng `openssl rand -hex 24`
+      Bi mat dung chung voi backend (CloudFront gan vao header X-Origin-Verify). Gia tri phai trung voi SSM
+      SecureString ma tham so OriginVerifySecretParam cua backend tro toi. Sinh bang `openssl rand -hex 24`
   DomainName:
     Type: String
     Default: ''
-    Description: Tên miền riêng (ví dụ linkpulse.vn). Để trống = dùng domain *.cloudfront.net
+    Description: Ten mien rieng (vi du linkpulse.vn). De trong = dung domain *.cloudfront.net
   CertificateArn:
     Type: String
     Default: ''
-    Description: ARN chứng chỉ ACM ở us-east-1 cho DomainName. Cần khi đặt DomainName
+    Description: ARN chung chi ACM o us-east-1 cho DomainName. Can khi dat DomainName
   RateLimitPer5Min:
     Type: Number
     Default: 1000
     MinValue: 10
-    Description: Số request tối đa mỗi IP trong 5 phút trên toàn domain (mạng dùng chung IP có thể bị chặn nhầm nếu đặt thấp)
+    Description: So request toi da moi IP trong 5 phut tren toan domain (mang dung chung IP co the bi chan nham neu dat thap)
   ShortenRateLimitPer5Min:
     Type: Number
     Default: 50
     MinValue: 10
-    Description: Số request POST /api/shorten tối đa mỗi IP trong 5 phút
+    Description: So request POST /api/shorten toi da moi IP trong 5 phut
   EnableWaf:
     Type: String
     Default: 'false'
@@ -44,13 +44,13 @@ Parameters:
       - 'true'
       - 'false'
     Description: >
-      Bật AWS WAF (Web ACL phạm vi CLOUDFRONT). Mặc định tắt vì WAF có phí; chỉ bật khi kiểm thử
-      (1-2 giờ), chụp bằng chứng rồi tắt lại. Cần deploy stack edge ở us-east-1.
+      Bat AWS WAF (Web ACL pham vi CLOUDFRONT). Mac dinh tat vi WAF co phi; chi bat khi kiem thu
+      (1-2 gio), chup bang chung roi tat lai. Can deploy stack edge o us-east-1.
   WafLogBucket:
     Type: String
     Default: ''
     Description: >
-      Tên bucket S3 nhận log WAF (chỉ dùng khi EnableWaf=true). Để trống = không ghi log WAF.
+      Ten bucket S3 nhan log WAF (chi dung khi EnableWaf=true). De trong = khong ghi log WAF.
 
 Conditions:
   HasDomain: !And
@@ -62,7 +62,7 @@ Conditions:
     - !Not [!Equals [!Ref WafLogBucket, '']]
 
 Resources:
-  # ------------------------------------------------------------------ Giao diện (S3, riêng tư, chỉ CloudFront đọc)
+  # ------------------------------------------------------------------ Giao dien (S3, rieng tu, chi CloudFront doc)
   FrontendBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -100,8 +100,8 @@ Resources:
               StringEquals:
                 AWS:SourceArn: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
 
-  # ------------------------------------------------------------------ Chính sách CloudFront
-  # Chuyển tiếp header backend cần, KHÔNG chuyển Host (API Gateway từ chối Host lạ)
+  # ------------------------------------------------------------------ Chinh sach CloudFront
+  # Chuyen tiep header backend can, KHONG chuyen Host (API Gateway tu choi Host la)
   ApiOriginRequestPolicy:
     Type: AWS::CloudFront::OriginRequestPolicy
     Properties:
@@ -119,7 +119,7 @@ Resources:
         CookiesConfig: {CookieBehavior: none}
         QueryStringsConfig: {QueryStringBehavior: all}
 
-  # Tệp tĩnh cache ngắn (5 phút) để deploy giao diện mới có hiệu lực nhanh
+  # Tep tinh cache ngan (5 phut) de deploy giao dien moi co hieu luc nhanh
   StaticCachePolicy:
     Type: AWS::CloudFront::CachePolicy
     Properties:
@@ -146,7 +146,7 @@ Resources:
           FrameOptions: {FrameOption: DENY, Override: true}
           ReferrerPolicy: {ReferrerPolicy: strict-origin-when-cross-origin, Override: true}
 
-  # Truy cập "/" -> 302 sang /index.html, chạy ngay tại biên (không tốn lượt gọi Lambda)
+  # Truy cap "/" -> 302 sang /index.html, chay ngay tai bien (khong ton luot goi Lambda)
   RootRedirectFunction:
     Type: AWS::CloudFront::Function
     Properties:
@@ -166,7 +166,7 @@ Resources:
         }
 
   # ------------------------------------------------------------------ WAF
-  # Chỉ tạo khi EnableWaf=true. Web ACL phạm vi CLOUDFRONT chỉ tạo được ở us-east-1.
+  # Chi tao khi EnableWaf=true. Web ACL pham vi CLOUDFRONT chi tao duoc o us-east-1.
   WebAcl:
     Type: AWS::WAFv2::WebACL
     Condition: WafEnabled
@@ -213,8 +213,8 @@ Resources:
             ManagedRuleGroupStatement: {VendorName: AWS, Name: AWSManagedRulesCommonRuleSet}
           VisibilityConfig: {SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: CommonRuleSet}
 
-  # Ghi log WAF vào bucket S3 có sẵn (chỉ khi bật WAF và có truyền WafLogBucket).
-  # Bucket ngoài cần policy cho phép delivery.logs.amazonaws.com ghi vào prefix AWSLogs/<account-id>/*.
+  # Ghi log WAF vao bucket S3 co san (chi khi bat WAF va co truyen WafLogBucket).
+  # Bucket ngoai can policy cho phep delivery.logs.amazonaws.com ghi vao prefix AWSLogs/<account-id>/*.
   WafLogging:
     Type: AWS::WAFv2::LoggingConfiguration
     Condition: WafLoggingEnabled
@@ -242,14 +242,14 @@ Resources:
           - Id: api
             DomainName: !Ref ApiDomain
             CustomOriginConfig: {OriginProtocolPolicy: https-only, OriginSSLProtocols: [TLSv1.2]}
-            # Backend chỉ nhận request có header này (src/linkpulse/origin.py): không gọi thẳng API để né WAF được
+            # Backend chi nhan request co header nay (src/linkpulse/origin.py): khong goi thang API de ne WAF duoc
             OriginCustomHeaders:
               - {HeaderName: X-Origin-Verify, HeaderValue: !Ref OriginVerifySecret}
           - Id: frontend
             DomainName: !GetAtt FrontendBucket.RegionalDomainName
             OriginAccessControlId: !GetAtt FrontendOac.Id
             S3OriginConfig: {OriginAccessIdentity: ''}
-        # Mặc định: /{code} (redirect) và mọi thứ khác -> API
+        # Mac dinh: /{code} (redirect) va moi thu khac -> API
         DefaultCacheBehavior:
           TargetOriginId: api
           ViewerProtocolPolicy: redirect-to-https
@@ -260,7 +260,7 @@ Resources:
           Compress: true
           FunctionAssociations:
             - {EventType: viewer-request, FunctionARN: !GetAtt RootRedirectFunction.FunctionMetadata.FunctionARN}
-        # Thứ tự có ý nghĩa: /api/* đứng trước để /api/x.y không bị bắt bởi mẫu /*.* của giao diện
+        # Thu tu co y nghia: /api/* dung truoc de /api/x.y khong bi bat boi mau /*.* cua giao dien
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: api
@@ -315,14 +315,15 @@ Resources:
 
 Outputs:
   DistributionDomain:
-    Description: Domain CloudFront; nếu dùng DomainName thì tạo bản ghi CNAME/ALIAS trỏ về đây
+    Description: Domain CloudFront; neu dung DomainName thi tao ban ghi CNAME/ALIAS tro ve day
     Value: !GetAtt Distribution.DomainName
   DistributionId:
-    Description: ID của distribution (dùng để tạo invalidation khi đổi giao diện)
+    Description: ID cua distribution (dung de tao invalidation khi doi giao dien)
     Value: !Ref Distribution
   FrontendBucketName:
-    Description: Bucket chứa giao diện của TV2 (aws s3 sync <thư mục giao diện> s3://<bucket>)
+    Description: Bucket chua giao dien cua TV2 (aws s3 sync <thu muc giao dien> s3://<bucket>)
     Value: !Ref FrontendBucket
   WebAclArn:
-    Description: ARN của Web ACL; rỗng khi EnableWaf=false
-    Value: !If [WafEnabled, !GetAtt WebAcl.Arn, !Ref AWS::NoValue]
+    Condition: WafEnabled
+    Description: ARN cua Web ACL (chi xuat khi EnableWaf=true)
+    Value: !GetAtt WebAcl.Arn
