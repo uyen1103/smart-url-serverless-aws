@@ -10,12 +10,13 @@
 ```bash
 git clone <repo-url> smart-url-serverless-aws && cd smart-url-serverless-aws
 aws --version && sam --version          # AWS CLI + SAM CLI (theo docs/backend_research.md §6)
-aws configure                           # dùng IAM user riêng do TV5 cấp, KHÔNG dùng root; region ap-southeast-1
+aws configure                           # dùng IAM user riêng do TV5 cấp, KHÔNG dùng root; region ap-southeast-2
                                         # (tài khoản Free-plan kiểu mới bị cố định region theo project — xem backend_research §6.2)
-python -m pytest tests -v               # phải PASS trước khi làm việc
+pip install -r backend/requirements-dev.txt
+python -m pytest tests -q               # phải PASS trước khi làm việc
 ```
 
-- Secret (GSB key, Turnstile secret, salt, AWS keys) **không bao giờ** commit — dùng SSM/Secrets Manager + `.env` local (đã có trong `.gitignore`).
+- Secret (GSB key, Turnstile secret, salt, AWS keys) **không bao giờ** commit — dùng SSM Parameter Store + `.env` local (đã có trong `.gitignore`).
 - Mọi tài nguyên thử nghiệm deploy bằng SAM phải `sam delete` sau khi xong để khỏi tốn phí.
 
 ---
@@ -33,7 +34,6 @@ python -m pytest tests -v               # phải PASS trước khi làm việc
 | Tài liệu | `docs/<issue-id>-<task-name>` | `docs/5-threat-model` |
 | Việc kỹ thuật/devops | `chore/<issue-id>-<task-name>` | `chore/5-waf-foundation` |
 | Hotfix production | `hotfix/<issue-id>-<task-name>` | `hotfix/44-block-phishing-wave` |
-
 ```bash
 git checkout main && git pull origin main
 git checkout -b feature/12-shorten-api
@@ -136,8 +136,11 @@ Không chấp nhận: `update code`, `fix bug`, `wip`, commit không dấu, comm
 
 ```bash
 # Backend (Python)
-python -m pytest tests -v
-python -m ruff check backend analytics tests 2>NUL || python -m py_compile backend/*.py
+python -m pytest tests -q
+
+# CloudFormation (không cần AWS credentials)
+cfn-lint backend/template.yaml
+cfn-lint infra/edge.yaml
 
 # API contract: spec phải parse được
 python -c "import yaml,sys; yaml.safe_load(open('docs/api_spec.yaml'))" && echo SPEC_OK
@@ -146,7 +149,8 @@ python -c "import yaml,sys; yaml.safe_load(open('docs/api_spec.yaml'))" && echo 
 npx prettier --check "frontend/**/*.{js,css,html}"
 ```
 
-- CI (GitHub Actions, TV5 dựng Week 2) chạy lại toàn bộ trên + kiểm tra commit message; PR đỏ không được merge.
+- CI (`.github/workflows/ci.yml`) chạy `pytest` và `cfn-lint` cho `backend/template.yaml` + `infra/edge.yaml`; không cần thông tin đăng nhập AWS. PR đỏ không được merge.
+- `sam validate --lint` chạy tay trên máy có AWS CLI, không đưa vào CI.
 - Tài liệu Mermaid (`docs/architecture.md`): sửa code Mermaid trước, export lại `docs/architecture.png`, không sửa PNG tay.
 
 ---
