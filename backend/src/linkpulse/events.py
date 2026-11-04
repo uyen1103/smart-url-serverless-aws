@@ -36,7 +36,12 @@ def parse_user_agent(ua):
 def referrer_domain(ref):
     if not ref:
         return "direct"
-    host = (urlparse(ref).hostname or "").lower().removeprefix("www.")
+    try:
+        parsed = urlparse(ref)
+        _ = parsed.port
+        host = (parsed.hostname or "").lower().removeprefix("www.")
+    except ValueError:
+        return "direct"
     return host[:60] or "direct"
 
 
