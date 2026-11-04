@@ -10,6 +10,14 @@ Event source mapping cấu hình retry, tách batch lỗi và gửi record khôn
 
 Mục tiêu thiết kế là độ trễ từ click tới dashboard **không quá 10 giây**, gồm cả chu kỳ polling API của dashboard. Đây là mục tiêu, không phải SLA hay số đo đã xác nhận; độ trễ thực tế phụ thuộc tải, xử lý và tần suất polling.
 
+## Ánh xạ click event vào bảng clicks
+
+Bảng `clicks` có PK `short_code` và SK tên `sk` (không phải `click_key`), với giá trị `<timestamp ISO UTC>#<id duy nhất>`. Trường `timestamp` trong event là phần ISO UTC ở đầu của `sk`.
+
+`expires_at` là kiểu Number chứa Unix epoch giây và được dùng làm thuộc tính TTL. Mặc định, click được lưu 30 ngày và thống kê trong bảng `stats` được lưu 8 ngày. Hai trường chỉ có trong item của bảng, không có trong [click_event_schema.json](./click_event_schema.json), là `sk` và `expires_at`.
+
+Luồng xử lý là `clicks` (DynamoDB Stream `NEW_IMAGE`, chỉ nhận `INSERT`) -> Lambda `process_clicks` -> bảng `stats`.
+
 ## Chỉ số analytics cần theo dõi
 
 | Chỉ số | Cách hiểu/nhóm dữ liệu | Dùng trên dashboard |
