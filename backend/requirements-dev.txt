@@ -1,6 +1,8 @@
 # Chỉ dùng khi phát triển/test. Lambda runtime đã có sẵn boto3 nên không cần requirements khi deploy.
+# aws-sam-cli cài riêng ở máy (sam validate --lint chạy tay), không đưa vào đây để CI không phải
+# cài SAM CLI (nặng và chậm).
 boto3
 pytest
 moto[dynamodb,ssm]
 cfn-lint
-aws-sam-cli
+pyyaml

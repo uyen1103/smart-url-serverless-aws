@@ -5,6 +5,22 @@ Description: >
   và chống lạm dụng, kiến trúc serverless (HTTP API + Lambda + DynamoDB).
 
 Parameters:
+  BillingMode:
+    Type: String
+    Default: PROVISIONED
+    AllowedValues:
+      - PROVISIONED
+      - PAY_PER_REQUEST
+    Description: Chế độ tính phí DynamoDB; mặc định PROVISIONED để dùng mức miễn phí
+
+  EnablePitr:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Bật Point-in-Time Recovery cho bảng urls (mặc định tắt)
+
   BaseUrl:
     Type: String
     Default: https://linkpulse.vn
@@ -38,15 +54,27 @@ Parameters:
     Description: Origin được phép gọi API từ trình duyệt (khi chạy sau CloudFront cùng domain thì không cần CORS)
   ErrorPageMode:
     Type: String
-    Default: json
+    Default: redirect
     AllowedValues: [json, redirect]
-    Description: json = trả lỗi JSON đúng spec; redirect = 302 sang error.html/warning.html cho trình duyệt
+    Description: redirect = 302 sang error.html/warning.html cho trình duyệt (mặc định, chạy cùng giao diện); json = trả lỗi JSON đúng spec
   RedirectRateLimit:
     Type: Number
     Default: 300
     Description: Số lượt redirect tối đa mỗi IP mỗi phút (0 = tắt)
+  SpikeClicksPerMinute:
+    Type: Number
+    Default: 300
+    MinValue: 1
+    Description: Số click/phút của một link để bị gắn cờ suspicious (lưu lượng tăng vọt). Khi demo deploy với 30
+  BotMinClicks:
+    Type: Number
+    Default: 50
+    MinValue: 1
+    Description: Số click/phút tối thiểu của một link để bắt đầu xét tỷ lệ bot (>= 80% thì gắn cờ). Khi demo deploy với 10
 
 Conditions:
+  UseProvisionedBilling: !Equals [!Ref BillingMode, PROVISIONED]
+  PitrEnabled: !Equals [!Ref EnablePitr, 'true']
   HasTurnstile: !Not [!Equals [!Ref TurnstileSecretParam, '']]
   HasSafeBrowsing: !Not [!Equals [!Ref SafeBrowsingKeyParam, '']]
   HasOriginVerify: !Not [!Equals [!Ref OriginVerifySecretParam, '']]
@@ -114,10 +142,14 @@ Resources:
       Timeout: 10                # có gọi DNS, Turnstile, Safe Browsing
       Policies:
         - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
-        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref RateLimitsTable}
-        - DynamoDBReadPolicy: {TableName: !Ref BlocklistTable}
-        - DynamoDBWritePolicy: {TableName: !Ref StatsTable}   # bộ đếm flagged_links
+        # Quyền DynamoDB tối thiểu, đo từ thao tác thật của handler (tests/test_handlers_iam_policy.py kiểm tra lại)
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: dynamodb:PutItem, Resource: !GetAtt UrlsTable.Arn}                   # tạo link
+            - {Effect: Allow, Action: dynamodb:Query, Resource: !Sub '${UrlsTable.Arn}/index/*'}           # tìm link cũ qua owner-index
+            - {Effect: Allow, Action: dynamodb:UpdateItem, Resource: !GetAtt RateLimitsTable.Arn}          # rate limit
+            - {Effect: Allow, Action: dynamodb:UpdateItem, Resource: !GetAtt StatsTable.Arn}               # bộ đếm flagged_links
+            - {Effect: Allow, Action: dynamodb:BatchGetItem, Resource: !GetAtt BlocklistTable.Arn}         # kiểm tra blocklist
         # Tên tham số SSM bắt đầu bằng "/" nên nối thẳng vào ARN (.../parameter/linkpulse/x)
         - !If
           - HasTurnstile
@@ -147,9 +179,11 @@ Resources:
       Description: GET /{code} - chuyển hướng và ghi click
       Policies:
         - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
-        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
-        - DynamoDBWritePolicy: {TableName: !Ref ClicksTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref RateLimitsTable}
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: [dynamodb:GetItem, dynamodb:UpdateItem], Resource: !GetAtt UrlsTable.Arn}   # đọc link, đếm click
+            - {Effect: Allow, Action: dynamodb:PutItem, Resource: !GetAtt ClicksTable.Arn}                        # ghi click event
+            - {Effect: Allow, Action: dynamodb:UpdateItem, Resource: !GetAtt RateLimitsTable.Arn}                 # rate limit
       Events:
         Redirect:
           Type: HttpApi
@@ -163,9 +197,14 @@ Resources:
       Timeout: 15                # xóa link kèm dọn dữ liệu thống kê
       Policies:
         - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
-        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref ClicksTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref StatsTable}
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: [dynamodb:GetItem, dynamodb:UpdateItem], Resource: !GetAtt UrlsTable.Arn}   # xóa mềm link
+            - {Effect: Allow, Action: dynamodb:Query, Resource: !Sub '${UrlsTable.Arn}/index/*'}                  # liệt kê link của owner
+            # Dọn click và thống kê của link bị xóa: Query rồi xóa hàng loạt (BatchWriteItem kèm DeleteItem cho chắc chắn)
+            - Effect: Allow
+              Action: [dynamodb:Query, dynamodb:BatchWriteItem, dynamodb:DeleteItem]
+              Resource: [!GetAtt ClicksTable.Arn, !GetAtt StatsTable.Arn]
       Events:
         List:
           Type: HttpApi
@@ -181,9 +220,11 @@ Resources:
       Description: GET /api/stats, GET /api/stats/{code}
       Policies:
         - !If [HasOriginVerify, !Ref OriginSecretReadPolicy, !Ref AWS::NoValue]
-        - DynamoDBReadPolicy: {TableName: !Ref UrlsTable}
-        - DynamoDBReadPolicy: {TableName: !Ref ClicksTable}
-        - DynamoDBReadPolicy: {TableName: !Ref StatsTable}
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: dynamodb:GetItem, Resource: !GetAtt UrlsTable.Arn}
+            - {Effect: Allow, Action: dynamodb:Query, Resource: !GetAtt ClicksTable.Arn}
+            - {Effect: Allow, Action: [dynamodb:GetItem, dynamodb:Query], Resource: !GetAtt StatsTable.Arn}
       Events:
         Global:
           Type: HttpApi
@@ -212,9 +253,15 @@ Resources:
       Handler: handlers.process_clicks.lambda_handler
       Description: Stream clicks -> stats theo phút + gắn cờ link bất thường
       Timeout: 30
+      Environment:
+        Variables:               # ngưỡng phát hiện lạm dụng, chỉ hàm này dùng (gộp với Globals)
+          SPIKE_CLICKS_PER_MINUTE: !Ref SpikeClicksPerMinute
+          BOT_MIN_CLICKS: !Ref BotMinClicks
       Policies:
-        - DynamoDBCrudPolicy: {TableName: !Ref StatsTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref UrlsTable}
+        - Version: '2012-10-17'
+          Statement:
+            - {Effect: Allow, Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem], Resource: !GetAtt StatsTable.Arn}
+            - {Effect: Allow, Action: dynamodb:UpdateItem, Resource: !GetAtt UrlsTable.Arn}       # gắn cờ link đáng ngờ
         - SQSSendMessagePolicy: {QueueName: !GetAtt ClickDeadLetterQueue.QueueName}
       Events:
         ClickStream:
@@ -234,16 +281,53 @@ Resources:
                 Type: SQS
                 Destination: !GetAtt ClickDeadLetterQueue.Arn
 
+  # Log group tạo sẵn để giữ log 7 ngày (mặc định của Lambda là không bao giờ xóa, tốn phí lưu trữ)
+  ShortenLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ShortenFunction}"
+      RetentionInDays: 7
+  RedirectLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${RedirectFunction}"
+      RetentionInDays: 7
+  LinksLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LinksFunction}"
+      RetentionInDays: 7
+  StatsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${StatsFunction}"
+      RetentionInDays: 7
+  HealthLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${HealthFunction}"
+      RetentionInDays: 7
+  ProcessClicksLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ProcessClicksFunction}"
+      RetentionInDays: 7
+
   ClickDeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 1209600               # 14 ngày
 
-  # ------------------------------------------------------------------ DynamoDB (on-demand)
+  # ------------------------------------------------------------------ DynamoDB
   UrlsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 6
+          WriteCapacityUnits: 5
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: short_code, AttributeType: S}
         - {AttributeName: owner_id, AttributeType: S}
@@ -256,12 +340,23 @@ Resources:
             - {AttributeName: owner_id, KeyType: HASH}
             - {AttributeName: created_at, KeyType: RANGE}
           Projection: {ProjectionType: ALL}
-      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+          ProvisionedThroughput: !If
+            - UseProvisionedBilling
+            - ReadCapacityUnits: 2
+              WriteCapacityUnits: 4
+            - !Ref AWS::NoValue
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [PitrEnabled, true, false]
 
   ClicksTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 1
+          WriteCapacityUnits: 4
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: short_code, AttributeType: S}
         - {AttributeName: sk, AttributeType: S}
@@ -274,7 +369,12 @@ Resources:
   StatsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 10
+          WriteCapacityUnits: 4
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: scope, AttributeType: S}
         - {AttributeName: sk, AttributeType: S}
@@ -286,7 +386,12 @@ Resources:
   RateLimitsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 1
+          WriteCapacityUnits: 5
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: pk, AttributeType: S}
       KeySchema:
@@ -296,7 +401,12 @@ Resources:
   BlocklistTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: !Ref BillingMode
+      ProvisionedThroughput: !If
+        - UseProvisionedBilling
+        - ReadCapacityUnits: 3
+          WriteCapacityUnits: 1
+        - !Ref AWS::NoValue
       AttributeDefinitions:
         - {AttributeName: domain, AttributeType: S}
       KeySchema:
