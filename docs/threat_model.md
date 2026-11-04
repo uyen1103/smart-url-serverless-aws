@@ -1,13 +1,13 @@
 # Threat Model — Smart URL Serverless (LinkPulse)
 
-> **Module:** TV5 — Security, Anti-abuse & DevOps · **Issue:** Week 1 / #5
+> **Module:** TV5 — Security, Anti-abuse & DevOps · **Issue:** Week 1 / #5 (cập nhật tuần 2 theo code thật)
 > **Phạm vi:** Hệ thống rút gọn liên kết serverless trên AWS
 > (`CloudFront + WAF → API Gateway HTTP API → Lambda (Python 3.11) → DynamoDB`,
-> redirect `302 + Cache-Control: no-store`, analytics qua `DynamoDB Streams → click_processor → stats_agg`).
+> redirect `302 + Cache-Control: no-store`, analytics qua `DynamoDB Streams → process_clicks → stats`).
 > **Tài liệu liên quan:** `docs/api_spec.yaml`, `docs/backend_research.md` (TV1),
-> `docs/analytics_research.md` + `docs/click_event_schema.json` (TV4), `backend/prototype.py`.
+> `docs/analytics_research.md` + `docs/click_event_schema.json` (TV4), `backend/src/linkpulse/validation.py`.
 > **Phương pháp:** STRIDE (Microsoft) + OWASP Top 10:2021 / OWASP API Security Top 10:2023.
-> **Ngày:** 27/10/2026 · **Trạng thái:** v1.0 — dùng cho review nhóm & triển khai Week 2.
+> **Ngày:** 27/10/2026 · **Trạng thái:** v1.1 — đối chiếu với code đã deploy tuần 2.
 
 ---
 
@@ -18,8 +18,8 @@
 | # | Tài sản | Tác động nếu bị xâm phạm |
 |---|---------|--------------------------|
 | A1 | Tính toàn vẹn redirect (người dùng đến đúng URL đích an toàn) | Phishing/malware phát tán qua domain uy tín của hệ thống → mất niềm tin, bị blocklist, bị trình duyệt cảnh báo |
-| A2 | Dữ liệu `urls` (DynamoDB): `short_code → long_url`, `owner`, `status`, `expires_at`, `max_clicks` | Lộ/quá ghi dữ liệu người khác, chiếm alias, resurrect mã đã xóa |
-| A3 | Dữ liệu `clicks` + `stats_agg` (analytics) | Số liệu sai → dashboard sai, quyết định sai; lộ `ip_hash`/hành vi |
+| A2 | Dữ liệu `urls` (DynamoDB): `short_code → long_url`, `owner_id`, `status`, `expires_at`, `max_clicks` | Lộ/quá ghi dữ liệu người khác, chiếm alias, resurrect mã đã xóa |
+| A3 | Dữ liệu `clicks` + `stats` (analytics) | Số liệu sai → dashboard sai, quyết định sai; lộ `ip_hash`/hành vi |
 | A4 | Quyền riêng tư: IP (qua `ip_hash` + salt), `User-Agent`, `country`, `referrer` | Rò rỉ PII/giả danh, vi phạm chính sách |
 | A5 | Ngân sách AWS & quota (Lambda concurrency, DynamoDB WCU/RCU, API Gateway, WAF) | Bị đốt tiền (bill shock), DoS ví (economic DoS), hết quota → sập dịch vụ |
 | A6 | Uy tín domain `linkpulse.vn` + distribution CloudFront | Bị Safe Browsing/URLhaus/Meta đánh dấu → toàn bộ link bị chặn |
@@ -33,31 +33,31 @@
       │                           TLS terminate,              Throttle cơ bản,
       │                           country header,              route /shorten, /{code},
       │                           cache behavior               /stats, /links
-      │                                                              │
+      │                                      + X-Origin-Verify           │
       │──(0) DNS / TLS / CDN edge (không tin client IP/header)───────▼
                                                               [Lambda Backend]
                                                               validate → Turnstile verify
-                                                              → GSB/URLhaus (async+cache)
+                                                              → blocklist / Safe Browsing
                                                               → DynamoDB conditional write
                                                                      │
                                                                      ▼
-                                                     [DynamoDB: urls | clicks | stats_agg | rate_limits | blocklist]
+                                                     [DynamoDB: urls | clicks | stats | rate_limits | blocklist]
                                                                      │ (Streams NEW_IMAGE, INSERT only)
                                                                      ▼
-                                                     [Lambda click_processor → stats_agg] ──▶ [GET /stats(/:code)]
+                                                     [Lambda process_clicks → stats] ──▶ [GET /stats(/:code)]
 ```
 
 **Ranh giới:**
 
 - **TB-0 (Untrusted):** mọi thứ từ client — URL, `X-Owner-Id`, `User-Agent`, `Referer`, `confirm=1`, Turnstile token. Không bao giờ tin trực tiếp.
-- **TB-1 (Edge):** CloudFront là điểm duy nhất được tin cho `CloudFront-Viewer-Country` và IP nguồn (qua `X-Forwarded-For` do AWS chèn). Origin (API Gateway/Lambda) **phải** chặn truy cập trực tiếp (resource policy / custom header bí mật / Security Groups logic) — nếu không attacker tự forge country header (TV4 đã cảnh báo).
-- **TB-2 (App):** Lambda là nơi thực thi mọi kiểm tra (validate, auth owner, Turnstile, verdict cache). Không đẩy kiểm tra bảo mật ra frontend.
+- **TB-1 (Edge):** CloudFront là điểm duy nhất được tin cho `CloudFront-Viewer-Country` và IP nguồn (qua `X-Forwarded-For` do AWS chèn). Origin (API Gateway/Lambda) **phải** chặn truy cập trực tiếp — code hiện dùng header bí mật `X-Origin-Verify` mà CloudFront gắn vào mọi request tới API (`backend/src/linkpulse/origin.py`), nếu không attacker tự forge country header (TV4 đã cảnh báo).
+- **TB-2 (App):** Lambda là nơi thực thi mọi kiểm tra (validate, auth owner, Turnstile, tra blocklist). Không đẩy kiểm tra bảo mật ra frontend.
 - **TB-3 (Data):** DynamoDB + Streams là nguồn sự thật. Mọi ghi cạnh tranh phải qua conditional write; analytics chỉ cộng từ `INSERT`.
 
 ### 1.3. Giả định & ngoài phạm vi
 
-- **Giả định:** TLS đầy đủ (CloudFront + ACM); IAM least-privilege + MFA bắt buộc (xem `scripts/setup_aws_foundation.sh`); salt băm IP lưu ở SSM SecureString/KMS, không hard-code; `X-Owner-Id` chỉ là định danh trình duyệt, **không phải xác thực** (đã chốt với TV1/TV2 — API quản trị chặn/gỡ chặn cần auth thật ở Week 2+).
-- **Ngoài phạm vi v1:** đăng nhập người dùng (Cognito/JWT), kiểm duyệt nội dung trang đích sau khi tạo (chỉ check tại thời điểm tạo + re-check định kỳ), WAF Bot Control bản trả phí.
+- **Giả định:** TLS đầy đủ (CloudFront + ACM); IAM least-privilege + MFA bắt buộc (xem `scripts/setup_aws_foundation.sh`); salt băm IP truyền qua tham số template (`IpHashSalt`), không hard-code; `X-Owner-Id` chỉ là định danh trình duyệt, **không phải xác thực**. Chặn/gỡ chặn domain làm bằng script `scripts/blocklist.sh` (không có giao diện quản trị).
+- **Ngoài phạm vi v1:** đăng nhập người dùng (Cognito/JWT), kiểm duyệt nội dung trang đích sau khi tạo (chỉ check tại thời điểm tạo), WAF Bot Control bản trả phí.
 
 ---
 
@@ -75,18 +75,17 @@
 
 | ID | Mối đe dọa | Vector tấn công | Phân loại STRIDE | Mức độ rủi ro (CVSS/Impact) | Kịch bản khai thác | Biện pháp giảm thiểu (Mitigation) |
 |----|-----------|-----------------|------------------|------------------------------|---------------------|-----------------------------------|
-| **T-01** | **Phishing / Malware hosting qua link rút gọn** | Attacker rút gọn URL phishing (`https://evil.example/login-vcb`) thành `https://linkpulse.vn/aB3kLm9`, phát tán qua SMS/Facebook; nạn nhân tin domain chính thống | **S** (giả mạo uy tín domain) + T | **Critical** · CVSS 8.2 (AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N) · Impact H (A1, A6) | Tạo 100 link phishing với alias giống thương hiệu (`vcb-secure`, `shopee-sale`); dùng `?confirm=1`-style social engineering để vượt cảnh báo `suspicious` | 1) Validate + blocklist + **GSB v4 / URLhaus check lúc tạo** (async + cache verdict, chặn `blocked_domain`) — xem `security_research.md` §4. 2) Trạng thái `suspicious → warning.html?reason=suspicious`, `blocked → 403` không bao giờ redirect. 3) Re-scan định kỳ + API quản trị block. 4) Report-abuse + TTL blocklist. 5) CSP/`Referrer-Policy` ở frontend, không phản chiếu URL đích vào HTML mà không escape |
+| **T-01** | **Phishing / Malware hosting qua link rút gọn** | Attacker rút gọn URL phishing (`https://evil.example/login-vcb`) thành `https://linkpulse.vn/aB3kLm9`, phát tán qua SMS/Facebook; nạn nhân tin domain chính thống | **S** (giả mạo uy tín domain) + T | **Critical** · CVSS 8.2 (AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N) · Impact H (A1, A6) | Tạo 100 link phishing với alias giống thương hiệu (`vcb-secure`, `shopee-sale`); dùng `?confirm=1`-style social engineering để vượt cảnh báo `suspicious` | 1) Validate + tra `blocklist` + **Google Safe Browsing check lúc tạo** (chặn `blocked_domain`) — xem `security_research.md` §4. 2) Trạng thái `suspicious → warning.html?reason=suspicious`, `blocked → 403` không bao giờ redirect. 3) Chặn/gỡ chặn domain bằng `scripts/blocklist.sh` (lưu ý yêu cầu của nhóm). 4) Report-abuse + TTL blocklist. 5) CSP/`Referrer-Policy` ở frontend, không phản chiếu URL đích vào HTML mà không escape |
 | **T-02** | **Spam hàng loạt / tạo link ồ ạt (link farming)** | Script gọi `POST /api/shorten` hàng nghìn lần (xoay IP/proxy, bỏ qua UI) | **D** + T | **High** · CVSS 7.5 · Impact H (A5 chi phí/quota, A6 uy tín) | Botnet tạo 50k link rác trong 1 giờ → DynamoDB WCU爆, bảng `urls` phình, domain bị đánh dấu spam | 1) **WAF rate-based rule** trên `/api/shorten` (ví dụ 100 req/5 phút/IP → block 5–30 phút) + AWS Managed Rules IP Reputation. 2) **Turnstile bắt buộc** cho `/shorten` (thiếu/sai → `captcha_failed`). 3) Throttle API Gateway + token-bucket `rate_limits` trong DynamoDB (10 link/phút/IP hiển thị trên UI). 4) Giới hạn `MAX_URL_LENGTH=2048`, alias 3–30, `expires_in` 60–31.536.000s. 5) Alarm CloudWatch + Budget $5 (TV5 foundation) |
 | **T-03** | **Bot enumeration / brute-force short-code** | Duyệt không gian mã: `GET /a000001…`, dictionary alias phổ biến; mã Base62 tuần tự nếu dùng counter | **I** (thu thập URL riêng tư) + S | **High** · CVSS 6.5 · Impact H (A2 riêng tư) | Attacker quét 10M mã/ngày tìm link nội bộ (`/hr-luong-t13`), tống tiền hoặc SEO spam | 1) **Mã random 7 ký tự Base62 bằng `secrets`** (62⁷ ≈ 3.5 nghìn tỷ, không dùng counter tăng dần — TV1 đã chốt). 2) WAF rate-based cho `GET /{code}` (ví dụ 1000 req/5 phút/IP) + Managed Common Rule Set. 3) Redirect 404/410 đồng nhất, không lộ lý do chi tiết (chỉ `not_found`). 4) CloudFront cache `no-store` cho redirect để không lộ qua cache. 5) Rate-limit theo IP-hash ở Lambda + exponential backoff 429. 6) Cân nhắc không phân biệt hoa/thường ở alias? — giữ phân biệt như spec để tăng không gian |
-| **T-04** | **Redirect loop (vòng lặp chuyển hướng)** | `long_url` trỏ vòng quanh: `A→B→A`, hoặc self-chain `linkpulse.vn/x → linkpulse.vn/y → … → linkpulse.vn/x` | **D** (treo trình duyệt/lambda) + T | **Medium** · CVSS 5.3 · Impact M (A1 UX, A5 tài nguyên) | Attacker tạo `A→B`, `B→A`; nạn nhân mở → trình duyệt báo `ERR_TOO_MANY_REDIRECTS`; bot redirect-follower của hệ thống (nếu có preview) treo/timeout | 1) **Chặn own-domain** (`linkpulse.vn` + CloudFront domain + custom domain, gồm subdomain — `validate_url` reason `own_domain`). 2) Trình preview/unfurl (nếu có) giới hạn redirect-hop ≤ 5 + timeout 5s, không follow loop. 3) Frontend mở link ngoài với `rel=noopener`. 4) Test-case loop trong `tests/` |
-| **T-05** | **Chuyển hướng trỏ ngược về chính hệ thống (self-reference / open-redirect dây chuyền)** | `long_url = https://linkpulse.vn/{code-khác}` hoặc `https://linkpulse.vn/api/...`, `/warning.html`, `//linkpulse.vn@evil` | **S** + T | **High** · CVSS 6.8 · Impact H (A1 trust, bypass `blocked`) | Attacker tạo link `X → /warning.html?reason=blocked` giả trang cảnh báo thật để lừa “xác minh”; hoặc `X → /api/shorten` gây hành vi lạ; hoặc dùng `https://linkpulse.vn%2e.evil.example/` né check chuỗi | 1) Chuẩn hóa URL bằng `URL` parser (không check chuỗi thô): so sánh `hostname` lowercase, strip trailing dot, decode punycode; chặn `OWN_DOMAINS` + CloudFront domain + mọi custom domain (config, không hard-code). 2) Chặn `username:password@` (`credentials_not_allowed`). 3) Chặn khoảng trắng/ký tự điều khiển. 4) Alias trùng route hệ thống (`api, assets, dashboard, error, warning, stats, links, shorten, admin`) → `alias_taken` |
-| **T-06** | **SSRF vào metadata / private network** | `long_url` là IP nội bộ hoặc domain phân giải về IP nội bộ: `127.0.0.1`, `localhost`, `169.254.169.254/latest/meta-data/iam/security-credentials/`, `10/8`, `172.16/12`, `192.168/16`, dạng né `2130706433`, `127.1`, `0x7f.0.0.1`, `[::ffff:127.0.0.1]`, DNS rebinding | **E** (đọc credential IMDSv1, quét VPC) + I | **Critical** · CVSS 9.1 (AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:L) · Impact H (toàn bộ AWS account) | Attacker tạo link `http://169.254.169.254/latest/meta-data/` rồi dụ **server-side fetcher** (preview/screenshot/GSB-enrichment) fetch → lộ IAM credential; hoặc quét `http://10.0.1.5:8080/admin` trong VPC | 1) **Validate 2 lớp** (mẫu TS §4): lớp cú pháp (scheme/host) + lớp phân giải (xem 3). 2) Chặn mọi IP literal thuộc `is_private/is_loopback/is_link_local/is_reserved/is_multicast/is_unspecified` — **bao gồm cả dạng thập phân/octal/hex** (`inet_aton`-equivalent) và IPv6-mapped. 3) **Resolve DNS ra mọi A/AAAA rồi kiểm tra từng IP** (chống DNS rebinding: resolve tại validate + resolve lại ngay trước fetch với cùng kết quả, pin IP, timeout ngắn). 4) Mọi fetch server-side chạy trong egress bị giới hạn (no VPC route tới metadata nếu không cần; dùng IMDSv2 + hop-limit 1). 5) Không bao giờ fetch URL người dùng ở Lambda redirect nóng — chỉ fetch ở worker cách ly (nếu cần preview) với allowlist egress. 6) Log `host_not_allowed`, không phản chiếu IP nội bộ cho client |
+| **T-04** | **Redirect loop (vòng lặp chuyển hướng)** | `long_url` trỏ vòng quanh: `A→B→A`, hoặc self-chain `linkpulse.vn/x → linkpulse.vn/y → … → linkpulse.vn/x` | **D** (treo trình duyệt/lambda) + T | **Medium** · CVSS 5.3 · Impact M (A1 UX, A5 tài nguyên) | Attacker tạo `A→B`, `B→A`; nạn nhân mở → trình duyệt báo `ERR_TOO_MANY_REDIRECTS`; bot redirect-follower của hệ thống (nếu có preview) treo/timeout | 1) **Chặn own-domain** (`linkpulse.vn` + CloudFront domain + custom domain, gồm subdomain — `validate_url` reason `own_domain`). 2) Trình preview/unfurl (nếu có) giới hạn redirect-hop ≤ 5 + timeout 5s, không follow loop. 3) Frontend mở link ngoài với `rel=noopener`. 4) Test-case loop trong `tests/` || **T-05** | **Chuyển hướng trỏ ngược về chính hệ thống (self-reference / open-redirect dây chuyền)** | `long_url = https://linkpulse.vn/{code-khác}` hoặc `https://linkpulse.vn/api/...`, `/warning.html`, `//linkpulse.vn@evil` | **S** + T | **High** · CVSS 6.8 · Impact H (A1 trust, bypass `blocked`) | Attacker tạo link `X → /warning.html?reason=blocked` giả trang cảnh báo thật để lừa “xác minh”; hoặc `X → /api/shorten` gây hành vi lạ; hoặc dùng `https://linkpulse.vn%2e.evil.example/` né check chuỗi | 1) Chuẩn hóa URL bằng `URL` parser (không check chuỗi thô): so sánh `hostname` lowercase, strip trailing dot, decode punycode; chặn `OWN_DOMAINS` + CloudFront domain + mọi custom domain (config, không hard-code). 2) Chặn `username:password@` (`credentials_not_allowed`). 3) Chặn khoảng trắng/ký tự điều khiển. 4) Alias trùng route hệ thống (`api, assets, dashboard, error, warning, stats, links, shorten, admin`) → `alias_taken` |
+| **T-06** | **SSRF vào metadata / private network** | `long_url` là IP nội bộ hoặc domain phân giải về IP nội bộ: `127.0.0.1`, `localhost`, `169.254.169.254/latest/meta-data/iam/security-credentials/`, `10/8`, `172.16/12`, `192.168/16`, dạng né `2130706433`, `127.1`, `0x7f.0.0.1`, `[::ffff:127.0.0.1]`, DNS rebinding | **E** (đọc credential IMDSv1, quét VPC) + I | **Critical** · CVSS 9.1 (AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:L) · Impact H (toàn bộ AWS account) | Attacker tạo link `http://169.254.169.254/latest/meta-data/` rồi dụ **server-side fetcher** (preview/screenshot/GSB-enrichment) fetch → lộ IAM credential; hoặc quét `http://10.0.1.5:8080/admin` trong VPC | 1) **Validate 2 lớp** (mẫu TS §4): lớp cú pháp (scheme/host) + lớp phân giải (xem 3). 2) Chặn mọi IP literal thuộc `is_private/is_loopback/is_link_local/is_reserved/is_multicast/is_unspecified` — **bao gồm cả dạng thập phân/octal/hex** (`inet_aton`-equivalent) và IPv6-mapped. 3) **Resolve DNS ra mọi A/AAAA rồi kiểm tra từng IP** (chống DNS rebinding: resolve tại validate + resolve lại ngay trước fetch với cùng kết quả, pin IP, timeout ngắn). 4) Mọi fetch server-side chạy trong egress bị giới hạn (no VPC route tới metadata nếu không cần; dùng IMDSv2 + hop-limit 1). 5) Không bao giờ fetch URL người dùng ở Lambda redirect nóng — code hiện tại không fetch URL người dùng ở đâu cả (chỉ tra blocklist và hỏi Safe Browsing), nên bề mặt tấn công SSRF chưa mở. 6) Log `host_not_allowed`, không phản chiếu IP nội bộ cho client |
 | **T-07** | **SSRF qua redirect phía server (server-follows-redirect)** | URL ban đầu công khai nhưng redirect (301/302/meta-refresh) về IP nội bộ; fetcher đi theo mà không re-validate | **E** + I | **High** · CVSS 8.0 · Impact H | `https://evil.example/r` (200 → 302 `http://10.0.0.10/`) — worker preview đi theo → SSRF như T-06 | 1) Re-validate **mỗi hop** (tối đa 3–5 hop), áp cùng chính sách IP/host như URL gốc. 2) Tắt follow-redirect mặc định của HTTP client; tự xử lý thủ công. 3) Chặn redirect tới scheme khác (`file:`, `gopher:`, `dict:`). 4) Timeout tổng ≤ 8s, giới hạn body (ví dụ 1 MB) |
 | **T-08** | **Bot tăng click ảo (click fraud / analytics poisoning)** | Botnet/cron `curl /{code}` hàng nghìn lần, xoay UA/IP; hoặc `<img src=/code>` nhúng vào site traffic cao | **T** (làm sai số liệu) + D | **Medium** · CVSS 5.8 · Impact M (A3, A5) | Đối thủ bơm 100k click giả vào link đối thủ → `max_clicks` cạn, dashboard sai, `top_links` bị thao túng; hoặc bơm vào link mình để “làm đẹp” KPI | 1) Phân loại bot bằng UA (`user-agents` lib) + heuristic (tốc độ/IP burst, `referrer` bất thường) → `device=bot`, tách `bot_clicks` khỏi click hợp lệ (`total - bot`). 2) WAF rate-based + API throttle cho `/{code}`. 3) Không tin `ip_hash` cho billing; `unique_visitors` ghi rõ là ước tính. 4) CloudWatch anomaly alarm (spike click/phút). 5) Tùy chọn: `max_clicks` không đếm bot (quyết định Week 2, hiện spec đếm mọi 302 — cần chốt TV4) |
 | **T-09** | **Cạn kiệt tài nguyên / Bill shock (economic DoS)** | Flood cả 2 endpoint nặng nhất: `POST /shorten` (ghi DB + GSB lookup) và `GET /{code}` (đọc DB + ghi click + Streams + processor) | **D** | **High** · CVSS 7.0 · Impact H (A5) | 10k rps trong 1 giờ → Lambda concurrency 1000, DynamoDB on-demand爆, WAF request charge, Streams→Lambda loop | 1) WAF block + CloudFront (cache static, shield edge). 2) Reserved concurrency cho redirect fn + throttling. 3) DynamoDB on-demand + auto-scale + TTL `clicks`; CloudWatch billing alarm + **Budget $5** gửi mail nhóm. 4) `sam delete`/stack tách môi trường demo. 5) Kill-switch: chuyển `status=blocked` hoặc tắt behavior CloudFront |
 | **T-10** | **Open-redirect + XSS/malware qua scheme nguy hiểm** | `javascript:alert(1)`, `data:text/html,<script>…`, `vbscript:`, `file:///etc/passwd`, `ftp://…` | **S** + T (XSS) | **High** · CVSS 7.4 · Impact H (A1) | Link `javascript:` mở trong WebView cũ thực thi JS; `data:` HTML chứa form phishing không cần host | 1) **Whitelist scheme `http/https` duy nhất** (`scheme_not_allowed` → `invalid_url`). 2) Từ chối URL có `username/password@`, backtick/whitespace/control chars. 3) Redirect chỉ dùng `Location` header + `no-store`, không render URL vào HTML. 4) Warning page escape mọi tham số |
 | **T-11** | **Chiếm alias / typosquatting / reserved-route hijack** | Đăng ký `vietcombank`, `login`, `dashboard`, `api` trước; hoặc `faceb00k-sale` nhái thương hiệu | **S** | **Medium** · CVSS 5.4 · Impact M (A1, A2) | Attacker giữ alias `hotline` rồi đổi đích? (hiện không cho đổi đích — giảm rủi ro); giữ tên gây nhầm lẫn để phishing | 1) Alias regex `^[A-Za-z0-9-]{3,30}$` + `RESERVED_ALIASES` (đồng bộ frontend/backend). 2) Conditional write `attribute_not_exists(short_code)`; alias đã dùng (kể cả `deleted`) **không cấp lại**. 3) Blocklist từ khóa thương hiệu/nhạy cảm (cấu hình được). 4) Admin duyệt `suspicious` trước khi public (Week 2) |
-| **T-12** | **Vượt xác thực chủ sở hữu (`X-Owner-Id`) / IDOR** | `X-Owner-Id` là UUID do client tự sinh — ai biết UUID là xóa/list được link người khác; không có auth thật | **E** + I | **High** · CVSS 7.1 · Impact H (A2) | Attacker brute-force/log-steal UUID → `DELETE /links/{code}` link nạn nhân; `GET /links` lộ `long_url` riêng tư | 1) Ghi rõ trong spec/UI: đây là **định danh trình duyệt, không phải bảo mật**. 2) Không trả dữ liệu nhạy cảm ở `/stats` public (đã ẩn `ip_hash`/UA). 3) Week 2: Cognito/JWT cho API quản trị (`block/unblock`, `list all`); hiện tại giới hạn CORS, audit log `owner` + IP-hash. 4) Xoay UUID khi khả nghi; hướng dẫn không chia sẻ UUID |
+| **T-12** | **Vượt xác thực chủ sở hữu (`X-Owner-Id`) / IDOR** | `X-Owner-Id` là UUID do client tự sinh — ai biết UUID là xóa/list được link người khác; không có auth thật | **E** + I | **High** · CVSS 7.1 · Impact H (A2) | Attacker brute-force/log-steal UUID → `DELETE /links/{code}` link nạn nhân; `GET /links` lộ `long_url` riêng tư | 1) Ghi rõ trong spec/UI: đây là **định danh trình duyệt, không phải bảo mật**. 2) Không trả dữ liệu nhạy cảm ở `/stats` public (đã ẩn `ip_hash`). 3) Chặn/gỡ chặn domain dùng script có kiểm soát, không có endpoint quản trị công khai. 4) Xoay UUID khi khả nghi; hướng dẫn không chia sẻ UUID |
 | **T-13** | **Bỏ qua CAPTCHA (Turnstile bypass)** | Reuse token cũ, dùng token của site khác, gọi API trực tiếp không qua UI, tắt JS | **E** | **Medium** · CVSS 6.0 · Impact M (mở đường cho T-02) | Attacker sniff 1 token hợp lệ rồi replay 1000 lần `POST /shorten` | 1) **Verify mọi token ở server** (`siteverify`, check `success + hostname + action + cdata`, timeout 10s, one-time). 2) Token dùng 1 lần (cache `token-id` đã dùng 5–10 phút). 3) Không tin `turnstile_token` từ query/log; thiếu/sai → `captcha_failed`. 4) Rate-limit theo IP độc lập với CAPTCHA |
 | **T-14** | **Đầu độc cache / cache deception (CloudFront)** | `GET /{code}?x=…`, `GET /ABC` vs `/abc` (case), `GET /code%2f…` khiến edge cache nhầm; hoặc ép cache 301 cũ | **T** + I | **Medium** · CVSS 5.0 · Impact M | Attacker dụ nạn nhân mở URL có query lạ → cache redirect sai cho người sau; hoặc 301 cũ (nếu từng dùng) cache vĩnh viễn | 1) Redirect **302 + `Cache-Control: no-store, private`** (TV1 đã chốt — không dùng 301/308). 2) Cache policy: **không cache** `/{code}` và `/api/*` ở CloudFront (TTL 0, forward query-string + `confirm`). 3) Chuẩn hóa `code` case-sensitive đúng spec; trả 404 cho path lạ. 4) Disable range/odd-method cache |
 | **T-15** | **Rò rỉ quyền riêng tư qua analytics/logs** | `ip_hash` với salt yếu/cố định vĩnh viễn, log IP/UA gốc vào CloudWatch, `recent_clicks` lộ pattern, salt xoay làm vỡ `unique_visitors` | **I** | **Medium** · CVSS 5.5 · Impact M (A4) | Dev bật debug log in IP thật; salt hard-code trong repo → attacker có DB sẽ brute-force IP không gian nhỏ (IPv4) | 1) `ip_hash = SHA256(ip + salt)` với salt 256-bit từ SSM SecureString/KMS, không log IP/UA (cắt UA 512 ký tự chỉ lưu field, không log). 2) API không trả `ip_hash`/UA (TV4 đã chốt). 3) TTL `clicks` + retention log ngắn; IAM least-privilege đọc logs. 4) Ghi rõ `unique_visitors` là ước tính; xoay salt theo quý + chia kỳ thống kê (TV4 §unique visitors) |
@@ -318,25 +317,26 @@ export function validateAlias(alias: string | undefined): { ok: true } | { ok: f
 
 ## 5. Ma trận truy vết Mitigation → Nơi triển khai
 
-| Mitigation | WAF/CloudFront | API GW | Lambda | DynamoDB | Frontend | Week |
+| Mitigation | WAF/CloudFront | API GW | Lambda | DynamoDB | Frontend | Trạng thái |
 |------------|----------------|--------|--------|----------|----------|------|
-| Rate-based rule `/shorten` + `/​{code}` | ✅ | — | — | — | — | 1–2 |
-| Managed Rules (Common, KnownBadInputs, IP Reputation) | ✅ | — | — | — | — | 2 |
-| Throttle + token bucket `rate_limits` | — | ✅ | ✅ | ✅ | hiển thị 429/`Retry-After` | 2 |
-| Validate URL 2 lớp + own-domain + reserved alias | — | — | ✅ | — | ✅ (UX sớm) | 1 ✅ (prototype) |
-| Turnstile verify server-side | — | — | ✅ | cache token | ✅ widget | 2 |
-| GSB/URLhaus async + cache verdict | — | — | ✅ worker | ✅ `blocklist` + TTL | warning page | 2 |
-| 302 + `no-store`, không cache `/{code}` | ✅ behavior | — | ✅ header | — | `rel=noopener` | 1 ✅ |
-| Conditional write + alias không cấp lại | — | — | ✅ | ✅ | — | 1 ✅ |
-| Bot tách `bot_clicks`, alarm spike | — | — | ✅ | ✅ `stats_agg` | dashboard tách bot | 2 |
-| IP-hash salt KMS + TTL +最小 log | — | — | ✅ | ✅ TTL | — | 2 |
-| Budget $5 + billing alarm + kill-switch | — | — | — | — | — | 1 (foundation script) |
+| Rate-based rule `/shorten` + `/{code}` | ✅ `infra/edge.yaml` | — | — | — | — | xong (bật khi test) |
+| Managed Rules (Common, IP Reputation) | ✅ `infra/edge.yaml` | — | — | — | — | xong (bật khi test) |
+| Throttle + token bucket `rate_limits` | — | ✅ | ✅ | ✅ | hiển thị 429/`Retry-After` | xong |
+| Chặn gọi thẳng origin (`X-Origin-Verify`) | ✅ header | — | ✅ `origin.py` | — | — | xong |
+| Validate URL 2 lớp + own-domain + reserved alias | — | — | ✅ `validation.py` | — | ✅ (UX sớm) | xong |
+| Turnstile verify server-side | — | — | ✅ `turnstile.py` | — | ✅ widget | tuỳ chọn (tắt) |
+| Safe Browsing lúc tạo | — | — | ✅ `reputation.py` | — | warning page | tuỳ chọn (tắt) |
+| 302 + `no-store`, không cache `/{code}` | ✅ behavior | — | ✅ header | — | `rel=noopener` | xong |
+| Conditional write + alias không cấp lại | — | — | ✅ `repo.py` | ✅ | — | xong |
+| Bot tách `bot_clicks`, gắn cờ link đột biến | — | — | ✅ `abuse.py` | ✅ `stats` | dashboard tách bot | xong |
+| IP-hash salt + TTL + log tối thiểu | — | — | ✅ `ratelimit.py` | ✅ TTL | — | xong |
+| Budget $5 + billing alarm + kill-switch | — | — | — | — | — | xong (foundation script) |
 
 ---
 
 ## 6. Rủi ro còn lại (Residual) & giám sát
 
-1. **Re-scan URL sau khi tạo:** URL sạch lúc tạo có thể bị đổi thành phishing sau đó (domain hết hạn → attacker mua lại). → Worker re-check GSB/URLhaus mỗi 6–24h + chuyển `active → suspicious/blocked` (Week 3).
+1. **URL sạch lúc tạo có thể bị đổi thành phishing sau đó** (domain hết hạn → attacker mua lại). → Chạy lại kiểm tra độ tin cậy khi nghi ngờ, chuyển `active → suspicious/blocked`; `scripts/blocklist.sh` để chặn thủ công theo yêu cầu của nhóm.
 2. **`X-Owner-Id` yếu:** chấp nhận cho đồ án; mọi API destructive phải có audit log + xác nhận UI; nâng lên Cognito khi có auth thật.
 3. **DNS rebinding giữa validate và fetch:** giảm bằng resolve-lại + pin IP + TTL cache ngắn (60s); không fetch ở request nóng.
 4. **WAF false-positive:** Managed Rules có thể chặn traffic hợp lệ (đặc biệt Common Rule Set với query lạ) → bật Count mode trước, xem log 3–7 ngày rồi chuyển Block.
@@ -348,7 +348,7 @@ export function validateAlias(alias: string | undefined): { ok: true } | { ok: f
 
 - OWASP Top 10:2021 · OWASP API Security Top 10:2023 · OWASP Cheat Sheets (SSRF Prevention, Input Validation, CAPTCHA).
 - Microsoft STRIDE · CVSS v3.1 Specification.
-- AWS: WAF rate-based rules, Managed Rules, CloudFront cache policies/origin request policies, IMDSv2, SSM SecureString/KMS.
-- Google Safe Browsing API v4 · abuse.ch URLhaus API.
+- AWS: WAF rate-based rules, Managed Rules, CloudFront cache policies/origin request policies, IMDSv2, SSM Parameter Store SecureString.
+- Google Safe Browsing API v4.
 - Cloudflare Turnstile (siteverify).
-- Tài liệu nhóm: `docs/backend_research.md`, `docs/api_spec.yaml`, `docs/analytics_research.md`, `backend/prototype.py`.
+- Tài liệu nhóm: `docs/backend_research.md`, `docs/api_spec.yaml`, `docs/analytics_research.md`, `backend/src/linkpulse/`.

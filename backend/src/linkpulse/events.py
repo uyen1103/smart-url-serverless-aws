@@ -3,6 +3,8 @@ import re
 import time
 from urllib.parse import urlparse
 
+from botocore.exceptions import ClientError
+
 from . import db
 from .config import settings
 from .http import new_id
@@ -34,24 +36,34 @@ def parse_user_agent(ua):
 def referrer_domain(ref):
     if not ref:
         return "direct"
-    host = (urlparse(ref).hostname or "").lower().removeprefix("www.")
+    try:
+        parsed = urlparse(ref)
+        _ = parsed.port
+        host = (parsed.hostname or "").lower().removeprefix("www.")
+    except ValueError:
+        return "direct"
     return host[:60] or "direct"
 
 
 def record_click(code, *, ua, referer, country, ip_hash_value):
-    """Ghi 1 click event. Lỗi ở đây không được làm hỏng redirect (caller bắt exception)."""
+    """Ghi 1 click event. Lỗi ở đây không được làm hỏng redirect (caller bắt exception).
+    Bị DynamoDB throttle thì ghi cảnh báo và bỏ qua (mất 1 click trong thống kê); lỗi khác ném lên cho caller ghi log."""
     s = settings()
     device, browser, is_bot = parse_user_agent(ua)
     ts = now()
-    db.clicks().put_item(Item={
-        "short_code": code,
-        "sk": f"{to_iso(ts)}#{new_id()}",
-        "timestamp": to_iso(ts),
-        "country": country,
-        "device": device,
-        "browser": browser,
-        "referrer": referrer_domain(referer),
-        "ip_hash": ip_hash_value,
-        "result": "bot" if is_bot else "valid",
-        "expires_at": int(time.time()) + s.clicks_ttl_days * 86400,   # TTL của DynamoDB
-    })
+    try:
+        db.clicks(best_effort=True).put_item(Item={
+            "short_code": code,
+            "sk": f"{to_iso(ts)}#{new_id()}",
+            "timestamp": to_iso(ts),
+            "country": country,
+            "device": device,
+            "browser": browser,
+            "referrer": referrer_domain(referer),
+            "ip_hash": ip_hash_value,
+            "result": "bot" if is_bot else "valid",
+            "expires_at": int(time.time()) + s.clicks_ttl_days * 86400,   # TTL của DynamoDB
+        })
+    except ClientError as e:
+        if not db.throttled(e, "record_click"):
+            raise

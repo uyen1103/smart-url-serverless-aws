@@ -23,6 +23,7 @@ from .models import parse_iso, to_iso
 
 PREFIXES = {"c:": "countries", "d:": "devices", "b:": "browsers", "r:": "referrers"}
 TOP_N = 10
+MAX_REFERRERS = 20
 
 
 def minute_of(ts_iso):
@@ -45,7 +46,7 @@ def aggregate(events):
         minute = minute_of(e["timestamp"])
         code = e["short_code"]
         for scope in ("GLOBAL", f"LINK#{code}"):
-            g = groups.setdefault((scope, minute), {"counters": Counter(), "ips": set()})
+            g = groups.setdefault((scope, minute), {"counters": Counter(), "ips": set(), "referrers": set()})
             c = g["counters"]
             c["clicks"] += 1
             if e.get("result") == "bot":
@@ -53,7 +54,14 @@ def aggregate(events):
             c["c:" + e.get("country", "XX")] += 1
             c["d:" + e.get("device", "other")] += 1
             c["b:" + e.get("browser", "Other")] += 1
-            c["r:" + e.get("referrer", "direct")] += 1
+            referrer = e.get("referrer", "direct")
+            if referrer in g["referrers"]:
+                c["r:" + referrer] += 1
+            elif len(g["referrers"]) < MAX_REFERRERS:
+                g["referrers"].add(referrer)
+                c["r:" + referrer] += 1
+            else:
+                c["r:other"] += 1
             if scope == "GLOBAL":
                 c["l:" + code] += 1
             if e.get("ip_hash"):
