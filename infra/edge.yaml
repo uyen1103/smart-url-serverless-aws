@@ -11,7 +11,7 @@ Description: >
 Parameters:
   ApiDomain:
     Type: String
-    Description: Output ApiDomain của stack backend, dạng abc123.execute-api.ap-southeast-1.amazonaws.com
+    Description: Output ApiDomain của stack backend, dạng abc123.execute-api.ap-southeast-2.amazonaws.com
   OriginVerifySecret:
     Type: String
     NoEcho: true
@@ -37,11 +37,29 @@ Parameters:
     Default: 50
     MinValue: 10
     Description: Số request POST /api/shorten tối đa mỗi IP trong 5 phút
+  EnableWaf:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >
+      Bật AWS WAF (Web ACL phạm vi CLOUDFRONT). Mặc định tắt vì WAF có phí; chỉ bật khi kiểm thử
+      (1-2 giờ), chụp bằng chứng rồi tắt lại. Cần deploy stack edge ở us-east-1.
+  WafLogBucket:
+    Type: String
+    Default: ''
+    Description: >
+      Tên bucket S3 nhận log WAF (chỉ dùng khi EnableWaf=true). Để trống = không ghi log WAF.
 
 Conditions:
   HasDomain: !And
     - !Not [!Equals [!Ref DomainName, '']]
     - !Not [!Equals [!Ref CertificateArn, '']]
+  WafEnabled: !Equals [!Ref EnableWaf, 'true']
+  WafLoggingEnabled: !And
+    - !Equals [!Ref EnableWaf, 'true']
+    - !Not [!Equals [!Ref WafLogBucket, '']]
 
 Resources:
   # ------------------------------------------------------------------ Giao diện (S3, riêng tư, chỉ CloudFront đọc)
@@ -148,8 +166,10 @@ Resources:
         }
 
   # ------------------------------------------------------------------ WAF
+  # Chỉ tạo khi EnableWaf=true. Web ACL phạm vi CLOUDFRONT chỉ tạo được ở us-east-1.
   WebAcl:
     Type: AWS::WAFv2::WebACL
+    Condition: WafEnabled
     Properties:
       Name: !Sub "${AWS::StackName}-acl"
       Scope: CLOUDFRONT
@@ -193,6 +213,15 @@ Resources:
             ManagedRuleGroupStatement: {VendorName: AWS, Name: AWSManagedRulesCommonRuleSet}
           VisibilityConfig: {SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: CommonRuleSet}
 
+  # Ghi log WAF vào bucket S3 có sẵn (chỉ khi bật WAF và có truyền WafLogBucket).
+  # Bucket ngoài cần policy cho phép delivery.logs.amazonaws.com ghi vào prefix AWSLogs/<account-id>/*.
+  WafLogging:
+    Type: AWS::WAFv2::LoggingConfiguration
+    Condition: WafLoggingEnabled
+    Properties:
+      ResourceArn: !GetAtt WebAcl.Arn
+      LogDestinationConfigs: [!Sub "arn:aws:s3:::${WafLogBucket}"]
+
   # ------------------------------------------------------------------ CloudFront
   Distribution:
     Type: AWS::CloudFront::Distribution
@@ -201,7 +230,7 @@ Resources:
         Enabled: true
         HttpVersion: http2and3
         PriceClass: PriceClass_200
-        WebACLId: !GetAtt WebAcl.Arn
+        WebACLId: !If [WafEnabled, !GetAtt WebAcl.Arn, !Ref AWS::NoValue]
         Aliases: !If [HasDomain, [!Ref DomainName], !Ref AWS::NoValue]
         ViewerCertificate: !If
           - HasDomain
@@ -288,8 +317,12 @@ Outputs:
   DistributionDomain:
     Description: Domain CloudFront; nếu dùng DomainName thì tạo bản ghi CNAME/ALIAS trỏ về đây
     Value: !GetAtt Distribution.DomainName
+  DistributionId:
+    Description: ID của distribution (dùng để tạo invalidation khi đổi giao diện)
+    Value: !Ref Distribution
   FrontendBucketName:
     Description: Bucket chứa giao diện của TV2 (aws s3 sync <thư mục giao diện> s3://<bucket>)
     Value: !Ref FrontendBucket
   WebAclArn:
-    Value: !GetAtt WebAcl.Arn
+    Description: ARN của Web ACL; rỗng khi EnableWaf=false
+    Value: !If [WafEnabled, !GetAtt WebAcl.Arn, !Ref AWS::NoValue]

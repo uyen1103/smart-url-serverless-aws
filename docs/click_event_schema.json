@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Click event",
-  "description": "Schema cho một lượt click đã được ẩn danh, dùng giữa bảng clicks và pipeline analytics.",
+  "description": "Schema cho một lượt click đã được ẩn danh, dùng giữa bảng clicks và pipeline analytics. Event này là phần dữ liệu thuần; khi ghi vào bảng clicks backend thêm sk và expires_at (xem analytics_research.md).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,7 +12,7 @@
     "device",
     "browser",
     "referrer",
-    "user_agent"
+    "result"
   ],
   "properties": {
     "short_code": {
@@ -31,8 +31,8 @@
     },
     "ip_hash": {
       "type": "string",
-      "description": "SHA-256 dạng hex của IP kết hợp salt; không được chứa IP gốc.",
-      "pattern": "^[a-f0-9]{64}$"
+      "description": "16 ký tự đầu của HMAC-SHA-256 dạng hex; không lưu IP gốc.",
+      "pattern": "^[a-f0-9]{16}$"
     },
     "country": {
       "type": "string",
@@ -60,22 +60,25 @@
       "description": "Domain nguồn giới thiệu hoặc direct nếu không có nguồn giới thiệu.",
       "minLength": 1
     },
-    "user_agent": {
+    "result": {
       "type": "string",
-      "description": "User-Agent gốc, giới hạn tối đa 512 ký tự để tránh lưu dữ liệu quá dài.",
-      "maxLength": 512
+      "description": "Kết quả phân loại click theo User-Agent.",
+      "enum": [
+        "valid",
+        "bot"
+      ]
     }
   },
   "examples": [
     {
       "short_code": "aB3xK9z",
       "timestamp": "2026-10-22T08:15:30Z",
-      "ip_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "ip_hash": "0123456789abcdef",
       "country": "VN",
       "device": "mobile",
       "browser": "Chrome",
       "referrer": "facebook.com",
-      "user_agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/129.0.0.0 Mobile Safari/537.36"
+      "result": "valid"
     }
   ]
 }

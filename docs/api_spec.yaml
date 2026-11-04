@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: LinkPulse API
-  version: 1.0.0
+  version: 1.1.0
   contact:
     name: TV1 – Backend Core
   description: |
@@ -20,13 +20,15 @@ info:
     - Trong API dùng tên trường `code` cho mã rút gọn; trong DynamoDB và click event
       cùng giá trị đó tên là `short_code`.
     - Redirect dùng **HTTP 302** (không dùng 301) để mỗi lượt truy cập đều qua server và đếm được click.
+    - Khi bật kiểm tra origin (tham số `OriginVerifySecretParam`), request không đi qua CloudFront (thiếu hoặc sai
+      header `X-Origin-Verify`) nhận **403 `forbidden`** ở mọi route, kể cả `GET /api/health`.
 
     **Chủ sở hữu link (chưa có tài khoản).** Frontend tạo một UUID lưu ở trình duyệt và gửi trong header
     `X-Owner-Id`. Đây chỉ là định danh theo trình duyệt, **không phải cơ chế xác thực**: ai biết UUID đều
     thao tác được với link của UUID đó. Các chức năng quản trị (chặn/gỡ chặn link) cần xác thực thật và
     **chưa nằm trong bản spec này** (phần của TV5).
 
-    **Các điểm cần thống nhất với nhóm** (xác thực quản trị, cách hiển thị trang lỗi, quyền xem thống kê...) được liệt kê ở mục 7 của `docs/backend_research.md`.
+    **Các điểm cần thống nhất với nhóm** (xác thực quản trị, quyền xem thống kê...) được liệt kê ở mục 7 của `docs/backend_research.md`.
 
 servers:
   - url: https://linkpulse.vn/api
@@ -39,6 +41,8 @@ tags:
     description: Tạo, truy cập, liệt kê và xóa link rút gọn
   - name: Stats
     description: Thống kê lượt truy cập
+  - name: System
+    description: Kiểm tra tình trạng hệ thống
 
 paths:
   /shorten:
@@ -352,6 +356,34 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Kiểm tra API còn sống
+      description: |
+        Trả `{"status": "ok"}` và **không đọc cơ sở dữ liệu**, nên chỉ cho biết API Gateway và Lambda đang chạy,
+        không bảo đảm DynamoDB hoạt động. Dùng để kiểm tra nhanh sau mỗi lần deploy (smoke test) và cho giám sát.
+      security:
+        - {}
+      responses:
+        '200':
+          description: API đang chạy
+          headers:
+            Cache-Control:
+              description: Luôn là `no-store`
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+        '403':
+          $ref: '#/components/responses/OriginForbidden'
+
   /{code}:
     servers:
       - url: https://linkpulse.vn
@@ -372,14 +404,18 @@ paths:
         | Hết hạn | 410 | `link_expired` | `/error.html?type=expired` |
         | Hết lượt click | 410 | `max_clicks_reached` | `/error.html?type=max_clicks` |
         | Bị chặn | 403 | `link_blocked` | `/warning.html?reason=blocked` (không bao giờ chuyển tiếp) |
-        | Đáng ngờ | 403 | `link_suspicious` | `/warning.html?reason=suspicious` |
+        | Đáng ngờ | 403 | `link_suspicious` | `/warning.html?reason=suspicious&code=<mã>` |
 
         Với link đáng ngờ, nếu người dùng chọn tiếp tục thì gọi lại `GET /{code}?confirm=1` để được 302.
         `confirm=1` **không** có tác dụng với link bị chặn.
         Thứ tự kiểm tra: bị chặn, hết hạn, hết lượt click, đáng ngờ.
 
-        Redirect luôn kèm `Cache-Control: no-store`. Cách hiển thị các trang lỗi/cảnh báo cho trình duyệt
-        (Lambda trả 302 sang trang đó, hay CloudFront custom error response) còn cần thống nhất với TV2 và TV5.
+        Redirect luôn kèm `Cache-Control: no-store`.
+
+        **Lỗi cho trình duyệt** (đã chốt, quyết định tuần 2 mục 3): với `ErrorPageMode=json` các trạng thái trên
+        trả lỗi JSON. Mặc định của template là `ErrorPageMode=redirect`: khi request có `Accept: text/html`, Lambda
+        trả **302** tới trang ở cột cuối thay vì JSON (cũng kèm `Cache-Control: no-store`); link đáng ngờ kèm
+        `&code=<mã>` để trang cảnh báo biết gọi lại `?confirm=1`. Lỗi 429 luôn là JSON.
       parameters:
         - $ref: '#/components/parameters/Code'
         - name: confirm
@@ -391,10 +427,12 @@ paths:
             enum: [1]
       responses:
         '302':
-          description: Chuyển hướng đến URL gốc
+          description: |
+            Chuyển hướng đến URL gốc. Ở chế độ `ErrorPageMode=redirect`, trình duyệt (`Accept: text/html`) cũng nhận 302
+            tới `/error.html` hoặc `/warning.html` cho các trạng thái lỗi trong bảng trên.
           headers:
             Location:
-              description: URL gốc cần chuyển đến
+              description: URL gốc cần chuyển đến (hoặc trang lỗi/cảnh báo, xem trên)
               schema:
                 type: string
                 format: uri
@@ -482,8 +520,11 @@ components:
           pattern: '^[A-Za-z0-9-]{3,30}$'
           description: |
             Tên tùy chọn thay cho mã tự sinh, 3 đến 30 ký tự chữ, số hoặc dấu gạch ngang.
-            Phân biệt chữ hoa/thường. Không được trùng alias đã có (kể cả đã xóa) hoặc tên dành riêng
-            của hệ thống (`api`, `assets`, `dashboard`, `error`, `warning`...); khi đó trả 409 `alias_taken`.
+            Phân biệt chữ hoa/thường (riêng tên dành riêng được so khớp không phân biệt hoa/thường).
+            Không được trùng alias đã có (kể cả đã xóa) hoặc 19 tên dành riêng của hệ thống: `api`, `assets`,
+            `vendor`, `css`, `js`, `mock`, `index`, `dashboard`, `error`, `warning`, `stats`, `links`, `shorten`,
+            `admin`, `favicon`, `health`, `static`, `login`, `robots`; khi đó trả 409 `alias_taken`.
+            (`js` chỉ 2 ký tự nên bị chặn sớm hơn bằng 400 `invalid_alias`.)
           example: khuyen-mai
         expires_in:
           type: integer
@@ -699,6 +740,14 @@ components:
                 type: string
                 enum: [valid, bot]
 
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
     Breakdown:
       type: array
       description: Phân bố số click theo một tiêu chí, sắp xếp giảm dần
@@ -776,6 +825,15 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             error: { code: forbidden, message: Bạn không có quyền xóa link này. }
+    OriginForbidden:
+      description: |
+        Request không đi qua CloudFront (thiếu hoặc sai header `X-Origin-Verify`). Chỉ xảy ra khi bật kiểm tra origin.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: { code: forbidden, message: Yêu cầu không hợp lệ. }
     NotFound:
       description: Không tìm thấy mã (hoặc link đã bị xóa)
       content:

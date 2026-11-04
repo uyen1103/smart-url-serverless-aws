@@ -1,8 +1,9 @@
 import { PUBLIC_DOMAIN } from "./config.js";
 
 const RESERVED_ALIASES = new Set([
-  "api", "admin", "stats", "links", "home", "protection", "warning", "error",
-  "index", "dashboard", "assets", "vendor", "favicon", "mock", "css", "js", "prototype",
+  // đồng bộ với backend/src/linkpulse/validation.py
+  "api", "assets", "vendor", "css", "js", "mock", "index", "dashboard", "error", "warning",
+  "stats", "links", "shorten", "admin", "favicon", "health", "static", "login", "robots",
 ]);
 
 // Kiểm tra nhanh ở trình duyệt để báo lỗi sớm; backend vẫn phải xác thực lại.

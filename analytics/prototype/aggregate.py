@@ -58,18 +58,19 @@ def generate_click_events(
         event_time = first_minute + timedelta(
             seconds=rng.randrange(10 * 60),
         )
+        device = rng.choice(DEVICES)
         events.append(
             {
                 "short_code": rng.choice(SHORT_CODES),
                 "timestamp": event_time.isoformat(timespec="seconds").replace(
                     "+00:00", "Z"
                 ),
-                "ip_hash": rng.randbytes(32).hex(),
+                "ip_hash": rng.randbytes(8).hex(),
                 "country": rng.choice(COUNTRIES),
-                "device": rng.choice(DEVICES),
+                "device": device,
                 "browser": rng.choice(BROWSERS),
                 "referrer": rng.choice(REFERRERS),
-                "user_agent": f"Prototype/{rng.choice(BROWSERS)} on {rng.choice(DEVICES)}",
+                "result": "bot" if device == "bot" else "valid",
             }
         )
 
@@ -129,7 +130,7 @@ def aggregate_events(events: list[dict[str, Any]]) -> dict[str, Any]:
         Mapping có tổng số click, series theo phút, top 5 link và thiết bị.
 
     Vì sao cần: minh họa các phép tổng hợp cốt lõi trước khi ghi số liệu vào
-    stats_agg và trả dữ liệu qua stats_api.
+    bảng stats và trả dữ liệu qua API stats.
     """
     clicks_by_minute: Counter[str] = Counter()
     clicks_by_link: Counter[str] = Counter()
