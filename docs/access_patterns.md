@@ -19,8 +19,8 @@ Tài liệu mô tả các access pattern chính của hệ thống LinkPulse, b�
 | Đánh dấu URL đáng ngờ | `urls` | Cập nhật trạng thái và lý do | `flag_link(code, reason, new_status)` |
 | Tăng số URL bị gắn cờ | `stats` | `UpdateItem` với khóa `scope=META`, `sk=flagged_links`, sử dụng `ADD` | `incr_flagged(n)` |
 | Đọc số URL bị gắn cờ | `stats` | `GetItem` theo khóa `scope=META`, `sk=flagged_links` | `get_flagged()` |
-| Kiểm tra blocklist | `blocklist` | Chưa xác định được hàm triển khai trong `repo.py` và `analytics.py` đã kiểm tra | Chưa tìm thấy |
-| Kiểm soát số request theo IP | `rate_limits` | Chưa xác định được hàm triển khai trong `repo.py` và `analytics.py` đã kiểm tra | Chưa tìm thấy |
+| Kiểm tra blocklist | `blocklist` | Chưa xác định được hàm triển khai; cần đối chiếu thêm các module backend | Chưa xác định |
+| Kiểm soát số request theo IP | `rate_limits` | `UpdateItem` với `ADD cnt`, khóa `pk` theo dạng `key#bucket`, dùng `ConditionExpression` để giới hạn số request trong cửa sổ thời gian | `hit(key, limit, window, now_ts)` trong `ratelimit.py` |
 
 ## 2. Quy ước khóa trong bảng stats
 
@@ -54,27 +54,27 @@ Khi có click mới, dữ liệu click được ghi vào bảng `clicks`. Dynamo
 
 ```text
 Người dùng truy cập URL
-          |
-          v
-       Redirect
-          |
-          v
+         |
+         v
+      Redirect
+         |
+         v
     DynamoDB clicks
-          |
-          v
- DynamoDB Streams
+         |
+         v
+  DynamoDB Streams
      NEW_IMAGE
-          |
-          v
+         |
+         v
  Lambda process_clicks
-          |
-          v
-   analytics.py
-          |
-          v
+         |
+         v
+    analytics.py
+         |
+         v
     DynamoDB stats
-          |
-          v
+         |
+         v
   Dashboard thống kê
 ```
 
@@ -89,16 +89,16 @@ Trong `analytics.py`:
 
 ## 4. Ghi chú kỹ thuật
 
-- Các thao tác truy vấn được mô tả trong tài liệu dựa trên `repo.py` và `analytics.py` đã kiểm tra.
+- Các thao tác truy vấn được mô tả trong tài liệu dựa trên các module backend đã kiểm tra.
 - Không sử dụng `Scan` trong các hàm đã kiểm tra; các thao tác đọc chính sử dụng `GetItem` hoặc `Query`.
 - `owner-index` hỗ trợ truy vấn URL theo `owner_id`.
 - `clicks` và `stats` sử dụng TTL thông qua thuộc tính `expires_at`.
 - DynamoDB Streams được cấu hình trên bảng `clicks` với `StreamViewType: NEW_IMAGE`.
 - DynamoDB Streams có cơ chế xử lý ít nhất một lần (at-least-once). Vì vậy, cần lưu ý khả năng xử lý trùng sự kiện khi cập nhật thống kê.
 - Bảng `stats` có giới hạn kích thước tối đa 400 KB cho mỗi item. Việc lưu nhiều tập hợp IP hoặc bộ đếm theo chiều có thể làm item tăng kích thước đáng kể.
+- Rate limit sử dụng cửa sổ thời gian cố định và cập nhật bộ đếm nguyên tử bằng DynamoDB. Khi DynamoDB bị throttle, cơ chế này fail-open; AWS WAF và API Gateway throttling vẫn là các lớp bảo vệ bổ sung.
 
 ## 5. Những phần cần đối chiếu thêm
 
-Các hàm blocklist và rate limit chưa xuất hiện trong hai file `repo.py` và `analytics.py` đã kiểm tra. Cần tìm thêm trong các module khác của backend trước khi kết luận hai chức năng này chưa được triển khai.
-
-Tên bảng, khóa, GSI, TTL và Streams cần tiếp tục được đối chiếu với `backend/template.yaml` để bảo đảm tài liệu thống nhất với cấu hình triển khai.
+- Chức năng blocklist chưa được xác định trong các module `repo.py`, `analytics.py`, `ratelimit.py` đã kiểm tra. Cần tìm thêm trong các module khác của backend trước khi kết luận chức năng này chưa được triển khai.
+- Tên bảng, khóa, GSI, TTL và Streams cần tiếp tục được đối chiếu với `backend/template.yaml` để bảo đảm tài liệu thống nhất với cấu hình triển khai.
