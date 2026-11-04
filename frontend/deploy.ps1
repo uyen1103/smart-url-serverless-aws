@@ -29,7 +29,8 @@ $syncArguments = @(
   "--cache-control", "max-age=300,s-maxage=300",
   "--exclude", "prototype/*",
   "--exclude", "deploy.ps1",
-  "--exclude", "deploy.sh"
+  "--exclude", "deploy.sh",
+  "--exclude", "README_DEPLOY.md"
 )
 $htmlFiles = @("index.html", "dashboard.html", "links.html", "protection.html", "warning.html", "error.html")
 $invalidationPaths = @("/index.html", "/dashboard.html", "/links.html", "/protection.html", "/warning.html", "/error.html", "/css/*", "/js/*", "/mock/*")

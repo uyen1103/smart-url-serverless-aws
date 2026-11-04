@@ -50,13 +50,13 @@ aws cloudfront create-invalidation \
   --paths "/index.html" "/dashboard.html"
 ```
 
-### Lưu ý routing và chi phí
+### Lưu ý routing
 
 CloudFront không có pattern khớp chính xác “một path segment bất kỳ” cho mã `/{code}`. Cần thống nhất cách phân biệt mã link với trang và asset (ví dụ quy ước trang có đuôi `.html`, asset có prefix riêng, còn default behavior chuyển tới API). Kiểm thử `/`, trang HTML, asset, `/api/*`, mã hợp lệ và mã không tồn tại.
 
 Nếu S3 private trả `403` khi object không tồn tại, không ánh xạ mọi `403` của distribution sang trang 404 một cách máy móc: có thể che mất lỗi/response 403 từ API, gồm cả trạng thái link bị chặn. Chỉ thêm custom error response sau khi kiểm tra hành vi API và routing thực tế.
 
-Chi phí S3, CloudFront, API Gateway và lưu lượng có thể khác nhau theo account, khu vực và cấu hình. Kiểm tra Free Tier/Billing và đặt AWS Budget trước khi triển khai; không coi hosting là miễn phí vô điều kiện.
+Hosting S3 + CloudFront nằm trong free tier. Không dùng domain riêng.
 
 ## 2. Wireframe
 
@@ -126,9 +126,8 @@ Từ danh sách Link của tôi, người dùng có thể tạo link mới, mở
 | Quy trình chạy | Không cần build; dùng static server để phục vụ file | Chạy dev server khi phát triển; build ra `dist` trước khi deploy |
 | Triển khai S3 | Đồng bộ trực tiếp thư mục frontend | Đồng bộ thư mục build `dist` |
 | Tổ chức giao diện | Phù hợp vài trang và tương tác vừa phải; cần tự chia module | Component và trạng thái dùng chung thuận tiện khi ứng dụng lớn |
-| Chi phí công cụ/thời gian | Ít setup, phù hợp prototype của tuần 1 | Cần Node.js và dependency, nhưng hỗ trợ cấu trúc ứng dụng tốt hơn |
 
-**Đề xuất hiện tại: HTML/CSS/JavaScript thuần.** Phạm vi ban đầu là website static, prototype nhỏ và các trang có thể tách thành file/module. Dùng ES modules nếu cần chia mã; khi chạy local, phục vụ qua static server (không mở trực tiếp bằng `file://`). Chọn React + Vite nếu nhóm quyết định xây ứng dụng nhiều component/trạng thái và có thời gian duy trì bước build.
+**Đề xuất hiện tại: HTML/CSS/JavaScript thuần.** Phạm vi ban đầu là website static, prototype nhỏ và các trang có thể tách thành file/module. Dùng ES modules nếu cần chia mã; khi chạy local, phục vụ qua static server (không mở trực tiếp bằng `file://`).
 
 ### Thư viện biểu đồ
 
