@@ -85,11 +85,15 @@ if ($LASTEXITCODE -eq 0) {
 
 Write-Host "==> 4. CloudFront và WAF (scope CLOUDFRONT)"
 $cfOut = aws cloudfront list-distributions --max-items 1 --output json 2>&1
-if ($LASTEXITCODE -eq 0 -and $cfOut) {
-  $cfJson = $cfOut | ConvertFrom-Json
+if ($LASTEXITCODE -eq 0) {
   $cfCount = 0
-  if ($cfJson.DistributionList -and $cfJson.DistributionList.Quantity) {
-    $cfCount = $cfJson.DistributionList.Quantity
+  if ($cfOut) {
+    try {
+      $cfJson = $cfOut | ConvertFrom-Json
+      if ($cfJson.DistributionList -and $cfJson.DistributionList.Quantity) {
+        $cfCount = $cfJson.DistributionList.Quantity
+      }
+    } catch {}
   }
   Write-Ok "Gọi được CloudFront (đang có $cfCount distribution)"
 } else {
