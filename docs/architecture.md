@@ -61,12 +61,12 @@ flowchart TB
         LProc["process_clicks<br/>Stream NEW_IMAGE, INSERT<br/>→ cộng dồn stats theo phút<br/>→ gắn cờ link bất thường"]
     end
 
-    subgraph Data["DynamoDB — provisioned, TTL, Streams"]
-        TUrls[("urls<br/>PK short_code<br/>GSI owner-index (owner_id, created_at)")]
-        TClicks[("clicks<br/>PK short_code, SK sk=ts#id<br/>TTL 30 ngày, Stream NEW_IMAGE")]
-        TStats[("stats<br/>PK scope (GLOBAL/LINK#code/META)<br/>SK sk=M#phút<br/>TTL 8 ngày")]
-        TRate[("rate_limits<br/>PK pk=loại#ip_hash#cửa sổ")]
-        TBlock[("blocklist<br/>PK domain")]
+    subgraph Data["DynamoDB — provisioned, TTL expires_at, Streams"]
+        TUrls[("urls (UrlsTable)<br/>PK short_code<br/>GSI owner-index (owner_id, created_at)")]
+        TClicks[("clicks (ClicksTable)<br/>PK short_code · SK sk=ts#id<br/>TTL expires_at (30 ngày) · Stream NEW_IMAGE")]
+        TStats[("stats (StatsTable, thay cho stats_agg)<br/>PK scope · SK sk=M#phút<br/>TTL expires_at (8 ngày)")]
+        TRate[("rate_limits (RateLimitsTable)<br/>PK pk=loại#ip_hash#cửa_sổ (không có SK)<br/>TTL expires_at")]
+        TBlock[("blocklist (BlocklistTable)<br/>PK domain (không chứa verdict_cache)")]
     end
 
     subgraph Ops["Vận hành"]
@@ -97,7 +97,7 @@ flowchart TB
     LStats --> TStats
     TClicks -->|Streams NEW_IMAGE| LProc
     LProc --> TStats
-    LProc -->|gắn cỏ| TUrls
+    LProc -->|gắn cờ| TUrls
     LProc -->|lỗi| SQS
     SQS --> CW
     LShort -.->|đọc bí mật| SSM
@@ -218,15 +218,20 @@ Chuẩn lỗi: `{ "error": { "code", "message?", "reason?", "retry_after?" } }`.
 ### 4.2. DynamoDB
 
 `backend/template.yaml` là nguồn sự thật của schema. Chế độ tính phí `PROVISIONED` để nằm trong
-mức miễn phí.
+mức miễn phí (23 WCU / 23 RCU tổng).
 
-| Bảng | Khoá | Ghi chú |
-|---|---|---|
-| `urls` | PK `short_code` · GSI `owner-index` (`owner_id`, `created_at`) | `status`, `long_url`, `owner_id`, `created_at`, `expires_at`, `max_clicks`, `click_count`, `flag_reason`, `flagged_at`. Xoá mềm giữ `status = deleted`. |
-| `clicks` | PK `short_code` · SK `sk = <ts>#<id>` | TTL 30 ngày · Stream `NEW_IMAGE` là nguồn của pipeline. Chỉ lưu `ip_hash`, không lưu `user_agent`. |
-| `stats` | PK `scope` (`GLOBAL` / `LINK#<code>` / `META`) · SK `sk = M#<phút>` | TTL 8 ngày · bộ đếm phẳng và tập `ips`. |
-| `rate_limits` | PK `pk = <loại>#<ip_hash>#<cửa sổ>` | Ghi có điều kiện nguyên tử, TTL tự dọn. |
-| `blocklist` | PK `domain` | Khớp cả domain cha (`a.b.bad.com` khớp `bad.com`). |
+| Bảng (`template.yaml`) | Partition Key (PK) & Sort Key (SK) | TTL (`expires_at`) | Ghi chú đồng bộ với `backend/template.yaml` |
+|---|---|---|---|
+| `urls` (`UrlsTable`) | PK `short_code` (`S`) · **Không có SK** · GSI `owner-index` (`PK: owner_id`, `SK: created_at`) | Không bật DynamoDB TTL (`expires_at` chỉ dùng kiểm tra nghiệp vụ trả `410 link_expired`) | `status`, `long_url`, `owner_id`, `created_at`, `expires_at`, `max_clicks`, `click_count`, `flag_reason`, `flagged_at`. Xoá mềm giữ `status = deleted` để không cấp lại mã. |
+| `clicks` (`ClicksTable`) | PK `short_code` (`S`) · SK `sk` (`S`, dạng `<timestamp ISO UTC>#<id>`, không dùng `click_key`) | Bật (`expires_at` kiểu Number, Unix epoch seconds, mặc định 30 ngày qua `CLICKS_TTL_DAYS`) | Stream `NEW_IMAGE` (lọc `INSERT`) kích hoạt `process_clicks`. Chỉ lưu `ip_hash` (16 hex) và `result` (`valid`/`bot`), không lưu `user_agent`. |
+| `stats` (`StatsTable`, đổi từ `stats_agg`) | PK `scope` (`S`: `GLOBAL` / `LINK#<code>` / `META`) · SK `sk` (`S`: `M#<ISO phút>` hoặc khoá meta) | Bật (`expires_at` kiểu Number, Unix epoch seconds, mặc định 8 ngày cho dòng `M#<phút>`; dòng `META` không đặt `expires_at`) | Lưu bộ đếm phẳng (`clicks`, `bot_clicks`, `c:*`, `d:*`, `b:*`, `r:*`, `l:*`) và tập `ips`. |
+| `rate_limits` (`RateLimitsTable`) | PK `pk` (`S`, dạng `<loại>#<ip_hash>#<cửa_sổ>`) · **Không có SK** (thay cho `PK: ip` ở bản phác thảo tuần 1) | Bật (`expires_at = (bucket + 2) * window`, kiểu Number, Unix epoch seconds) | Ghi có điều kiện nguyên tử (`ADD cnt :one`), tự dọn sau 2 cửa sổ thời gian. |
+| `blocklist` (`BlocklistTable`) | PK `domain` (`S`) · **Không có SK** | Không bật TTL | Chỉ lưu danh sách tên miền bị chặn nội bộ (`domain`, `reason`, `created_at`), khớp cả domain cha (`a.b.bad.com` khớp `bad.com`). |
+
+**Làm rõ các điểm đồng bộ giữa kiến trúc và `backend/template.yaml`:**
+
+- **Quy ước thuộc tính TTL `expires_at`:** Trên cả 3 bảng có bật DynamoDB TTL (`clicks`, `stats`, `rate_limits`), thuộc tính TTL đều đặt tên thống nhất là `expires_at` (`TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}`) và lưu giá trị kiểu **Number (Unix epoch seconds)** — số giây tính từ `1970-01-01T00:00:00Z`.
+- **Làm rõ về `verdict_cache` và `blocklist`:** Triển khai hiện tại trong `backend/template.yaml` chỉ có đúng 5 bảng nêu trên; **không có bảng `verdict_cache` riêng và không lưu chung `verdict_cache` trong bảng `blocklist`**. Bảng `blocklist` chỉ chứa các domain bị chặn. Khi bật Google Safe Browsing (`SafeBrowsingKeyParam`), Lambda `shorten` tra cứu trực tiếp qua API với cơ chế fail-open (`reputation.py`), còn `verdict_cache` chỉ là phương án mở rộng được phân tích trong `docs/security_research.md`.
 
 ### 4.3. Edge ↔ Origin
 
