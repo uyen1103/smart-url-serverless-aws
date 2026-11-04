@@ -1,3 +1,4 @@
+
 """Phân tích lưu lượng gần thời gian thực.
 
 Ghi:  DynamoDB Stream của bảng `clicks` -> Lambda process_clicks -> cộng dồn (ADD nguyên tử) vào
@@ -61,18 +62,37 @@ def aggregate(events):
 
 
 def apply_group(scope, minute, group):
-    """Cộng dồn một nhóm vào bảng stats; trả về item sau cập nhật (để phát hiện bất thường)."""
-    names, values, adds = {"#ttl": "expires_at"}, {":ttl": int(time.time()) + settings().stats_ttl_days * 86400}, []
+    """Cộng dồn một nhóm vào bảng stats; trả về item sau cập nhật."""
+    names = {"#ttl": "expires_at"}
+    values = {
+        ":ttl": int(time.time()) + settings().stats_ttl_days * 86400
+    }
+
+    adds = []
+
     for i, (attr, n) in enumerate(group["counters"].items()):
-        names[f"#a{i}"], values[f":v{i}"] = attr, n
+        names[f"#a{i}"] = attr
+        values[f":v{i}"] = n
         adds.append(f"#a{i} :v{i}")
+
     if group["ips"]:
-        names["#ips"], values[":ips"] = "ips", set(group["ips"])
+        names["#ips"] = "ips"
+        values[":ips"] = set(group["ips"])
         adds.append("#ips :ips")
+
+    update_expression = "SET #ttl = if_not_exists(#ttl, :ttl)"
+
+    if adds:
+        update_expression += " ADD " + ", ".join(adds)
+
     resp = db.stats().update_item(
         Key={"scope": scope, "sk": f"M#{minute}"},
-        UpdateExpression="ADD " + ", ".join(adds) + " SET #ttl = if_not_exists(#ttl, :ttl)",
-        ExpressionAttributeNames=names, ExpressionAttributeValues=values, ReturnValues="ALL_NEW")
+        UpdateExpression=update_expression,
+        ExpressionAttributeNames=names,
+        ExpressionAttributeValues=values,
+        ReturnValues="ALL_NEW"
+    )
+
     return resp["Attributes"]
 
 
@@ -109,6 +129,7 @@ def get_stats(scope, frm, to, granularity, at):
     timeline, total, bots, ips = {}, 0, 0, set()
     dims = {name: Counter() for name in PREFIXES.values()}
     links = Counter()
+
     for item in _query_range(scope, frm, to):
         minute = item["sk"][2:]
         key = hour_of(minute) if granularity == "hour" else minute
@@ -118,6 +139,7 @@ def get_stats(scope, frm, to, granularity, at):
         t[0] += clicks
         t[1] += bc
         ips |= set(item.get("ips", ()))
+
         for attr, val in item.items():
             if attr[:2] in PREFIXES:
                 dims[PREFIXES[attr[:2]]][attr[2:]] += int(val)
@@ -129,6 +151,7 @@ def get_stats(scope, frm, to, granularity, at):
     cur = floor_minute(frm).replace(minute=0) if granularity == "hour" else floor_minute(frm)
     end = floor_minute(to)
     series = []
+
     while cur <= end:
         k = to_iso(cur)
         c, b = timeline.get(k, (0, 0))
@@ -136,6 +159,7 @@ def get_stats(scope, frm, to, granularity, at):
         cur += step
 
     minutes = max(1.0, (to - frm).total_seconds() / 60)
+
     return {
         "updated_at": to_iso(at), "from": to_iso(frm), "to": to_iso(to), "granularity": granularity,
         "total_clicks": total, "bot_clicks": bots, "unique_visitors": len(ips),
@@ -161,7 +185,11 @@ def recent_global():
 
 
 def recent_for_link(code, limit=20):
-    resp = db.clicks().query(KeyConditionExpression=Key("short_code").eq(code), ScanIndexForward=False, Limit=limit)
+    resp = db.clicks().query(
+        KeyConditionExpression=Key("short_code").eq(code),
+        ScanIndexForward=False,
+        Limit=limit
+    )
     return [{"timestamp": i["timestamp"], "code": code, "country": i["country"], "device": i["device"],
              "browser": i["browser"], "referrer": i["referrer"], "result": i["result"]} for i in resp["Items"]]
 
