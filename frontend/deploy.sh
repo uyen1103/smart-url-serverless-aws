@@ -28,7 +28,7 @@ fi
 target="s3://${bucket}/"
 # Không đẩy prototype và script deploy lên bucket phục vụ người dùng.
 sync_args=(s3 sync "$root" "$target" --cache-control "max-age=300,s-maxage=300"
-  --exclude "prototype/*" --exclude "deploy.ps1" --exclude "deploy.sh")
+  --exclude "prototype/*" --exclude "deploy.ps1" --exclude "deploy.sh" --exclude "README_DEPLOY.md")
 html_files=(index.html dashboard.html links.html protection.html warning.html error.html)
 invalidation_paths=(/index.html /dashboard.html /links.html /protection.html /warning.html /error.html /css/\* /js/\* /mock/\*)
 
