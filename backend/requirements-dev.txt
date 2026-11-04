@@ -6,3 +6,4 @@ pytest
 moto[dynamodb,ssm]
 cfn-lint
 pyyaml
+jsonschema
