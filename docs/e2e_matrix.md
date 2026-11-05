@@ -22,6 +22,8 @@
 | Dashboard | Tổng 9 click (3 hợp lệ, 6 bot); biểu đồ cập nhật trong vài giây sau click lúc 18:17 (18:17–18:44). | Đạt | [04-dashboard-system-wide](screenshots/e2e/04-dashboard-system-wide.png) |
 | Chống lạm dụng chỉ xem | Có 4 số liệu (1 / 1 / 0 / 3), danh sách gắn cờ trống, không có nút quản trị (18:17–18:44). | Đạt | [05-protection-readonly](screenshots/e2e/05-protection-readonly.png) |
 | Lỗi mạng mô phỏng | DevTools Offline làm yêu cầu `shorten` thất bại; giao diện báo không thể kết nối máy chủ. | Đạt mô phỏng Offline; chưa thử ngắt Wi-Fi | [12-offline-devtools](screenshots/e2e/12-offline-devtools.png), [13-offline-friendly-error](screenshots/e2e/13-offline-friendly-error.png) |
+| Frontend trên S3 | Danh sách hiển thị 6 trang HTML, `css/` và `js/` (2026-11-05). | Đạt | [01-s3-bucket](screenshots/aws/01-s3-bucket.png) |
+| CloudFront | Distribution ở trạng thái Enabled và domain `d3rsimgoxz85kx.cloudfront.net` (2026-11-05). | Đạt | [02-cloudfront-enabled-domain](screenshots/aws/02-cloudfront-enabled-domain.png) |
 
 ## API
 
