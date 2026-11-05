@@ -135,7 +135,7 @@ EXECUTE=true INVALIDATE=true bash frontend/deploy.sh
 
 Lệnh đầu chỉ xem trước; lệnh thứ hai thực hiện sync và invalidation. Biến export sẽ mất khi phiên CloudShell đóng nên cần đặt lại ở phiên mới. Script loại `prototype/`, `deploy.ps1`, `deploy.sh` và `README_DEPLOY.md` khỏi sync; `mock/` vẫn được sync. Invalidation dùng danh sách khai báo gồm các trang HTML, `/css/*`, `/js/*` và `/mock/*`; script không tự so sánh file để chỉ tìm các đường dẫn đã thay đổi.
 
-Kết quả kiểm thử giao diện/API và các ca chưa chạy được ghi trong [e2e_matrix.md](./e2e_matrix.md). Sáu quan sát chưa chặn merge:
+Kết quả kiểm thử giao diện/API và các ca chưa chạy được ghi trong [e2e_matrix.md](./e2e_matrix.md); ảnh nằm trong `screenshots/e2e/` và không thay thế bằng chứng HTTP. `bad.example` bị backend trả `invalid_url` vì DNS không phân giải, nên không chứng minh kết quả blocklist. Lỗi mạng được mô phỏng bằng DevTools Offline, chưa thử bằng cách tắt Wi-Fi. Sáu quan sát chưa chặn merge:
 
 1. Dashboard ghi “Tất cả link của tôi” nhưng số liệu là toàn hệ thống; khác số liệu trang Chống lạm dụng.
 2. Ô alias hiển thị tiền tố cố định `linkpulse.vn/`.
@@ -144,4 +144,4 @@ Kết quả kiểm thử giao diện/API và các ca chưa chạy được ghi t
 5. `deploy.sh` vẫn upload `mock/` lên S3 dù `USE_MOCK=false`.
 6. Issue ghi 7 trang; frontend thực tế có 6 trang.
 
-Các ca chưa chạy và lý do được liệt kê trong ma trận: trùng URL, URL sai và alias chưa chạy lại trên giao diện; domain bị chặn chưa có dữ liệu blocklist; Turnstile chưa bật ở backend; link hết hạn và `max_clicks` chưa có dữ liệu kiểm thử; lỗi mạng chưa thử bằng cách tắt Wi-Fi; lỗi 5xx chưa gây được; 403 HTML chưa kiểm tra.
+Các ca chưa chạy và lý do được liệt kê trong ma trận: chưa có domain blocklist để kiểm tra API; rate limit không chạy trong lượt này; Turnstile chưa bật ở backend; chưa có link hết hạn hoặc dữ liệu `max_clicks`; chưa gây được lỗi 5xx; chưa kiểm tra 403 HTML. Trùng URL, URL sai và alias đã có kết quả API; ảnh UI liên quan chỉ ghi lại trạng thái trình duyệt, không thay thế kết quả API.
