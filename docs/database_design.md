@@ -158,6 +158,23 @@ Cấu hình năng lực đọc và ghi trong `backend/template.yaml`:
 | **Tổng cộng** | **23** | **23** |
 
 Các giá trị trên là cấu hình Provisioned Capacity trong template, không phải số liệu sử dụng thực tế.
+### 3.2.1. Capacity và chi phí tham chiếu
+
+Tổng Provisioned Capacity của hệ thống:
+
+- Read Capacity: 23 RCU.
+- Write Capacity: 23 WCU.
+
+Theo mức Free Tier DynamoDB được sử dụng làm giả định đối chiếu trong thiết kế (25 RCU và 25 WCU):
+
+| Chỉ số | Hệ thống | Mức tham chiếu | Còn lại |
+|---|---:|---:|---:|
+| Read Capacity | 23 RCU | 25 RCU | 2 RCU |
+| Write Capacity | 23 WCU | 25 WCU | 2 WCU |
+
+Như vậy, cấu hình hiện tại nằm trong mức capacity tham chiếu 25 RCU và 25 WCU.
+
+**Lưu ý:** Đây là phép đối chiếu capacity, không phải cam kết toàn bộ chi phí AWS bằng 0. Chi phí thực tế còn phụ thuộc vào điều kiện Free Tier, thời hạn ưu đãi, Region, lưu trữ, Streams, backup và các dịch vụ AWS khác.
 
 ### 3.3. Time to Live (TTL)
 
