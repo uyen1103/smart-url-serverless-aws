@@ -1,6 +1,6 @@
 // Khi deploy, đổi USE_MOCK=false sau khi API thật và Turnstile đã sẵn sàng.
 export const API_BASE_URL = "/api";
-export const USE_MOCK = true;
+export const USE_MOCK = false;
 // Khi deploy, điền site key công khai sau khi TV5 bật secret backend đồng thời.
 export const TURNSTILE_SITE_KEY = "";
 // Dashboard polling theo chu kỳ này; tab ẩn sẽ tạm dừng để tránh request không cần thiết.

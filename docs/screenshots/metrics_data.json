@@ -1,0 +1,15 @@
+{
+  "issue": 7,
+  "service": "linkpulse-backend",
+  "function_name": "linkpulse-backend-HealthFunction-bCMQTEPN5Ml7",
+  "aws_region": "ap-southeast-2",
+  "endpoint": "https://q7ldh9h6g9.execute-api.ap-southeast-2.amazonaws.com",
+  "metrics": {
+    "metric_name": "Duration",
+    "unit": "Milliseconds",
+    "p50_latency_ms": 1.1,
+    "p95_latency_ms": 2500,
+    "cold_start_observed": true
+  },
+  "timestamp_utc": "2026-11-04T12:30:00Z"
+}

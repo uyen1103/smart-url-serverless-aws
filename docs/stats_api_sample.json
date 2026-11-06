@@ -1,0 +1,493 @@
+{
+  "global": {
+    "updated_at": "2026-11-05T16:36:30Z",
+    "from": "2026-11-05T15:36:30Z",
+    "to": "2026-11-05T16:36:30Z",
+    "granularity": "hour",
+    "total_clicks": 65,
+    "bot_clicks": 15,
+    "unique_visitors": 1,
+    "avg_clicks_per_minute": 1.1,
+    "timeline": [
+      {
+        "bucket": "2026-11-05T15:00:00Z",
+        "clicks": 0,
+        "bot_clicks": 0
+      },
+      {
+        "bucket": "2026-11-05T16:00:00Z",
+        "clicks": 65,
+        "bot_clicks": 15
+      }
+    ],
+    "countries": [
+      {
+        "name": "AU",
+        "clicks": 65
+      }
+    ],
+    "devices": [
+      {
+        "name": "desktop",
+        "clicks": 50
+      },
+      {
+        "name": "bot",
+        "clicks": 15
+      }
+    ],
+    "browsers": [
+      {
+        "name": "Chrome",
+        "clicks": 50
+      },
+      {
+        "name": "Other",
+        "clicks": 15
+      }
+    ],
+    "referrers": [
+      {
+        "name": "direct",
+        "clicks": 65
+      }
+    ],
+    "code": null,
+    "flagged_links": 1,
+    "top_links": [
+      {
+        "code": "qKofOGq",
+        "clicks": 65
+      }
+    ],
+    "recent_clicks": [
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:31:16Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:31:14Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:31:11Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:31:09Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:31:07Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:31:04Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:31:03Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:31:01Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:59Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:56Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:54Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:52Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:50Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:48Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:46Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:44Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:42Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:39Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:38Z"
+      },
+      {
+        "browser": "Chrome",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "referrer": "direct",
+        "result": "valid",
+        "timestamp": "2026-11-05T16:30:36Z"
+      }
+    ]
+  },
+  "link": {
+    "updated_at": "2026-11-05T16:36:31Z",
+    "from": "2026-11-05T15:36:31Z",
+    "to": "2026-11-05T16:36:31Z",
+    "granularity": "hour",
+    "total_clicks": 65,
+    "bot_clicks": 15,
+    "unique_visitors": 1,
+    "avg_clicks_per_minute": 1.1,
+    "timeline": [
+      {
+        "bucket": "2026-11-05T15:00:00Z",
+        "clicks": 0,
+        "bot_clicks": 0
+      },
+      {
+        "bucket": "2026-11-05T16:00:00Z",
+        "clicks": 65,
+        "bot_clicks": 15
+      }
+    ],
+    "countries": [
+      {
+        "name": "AU",
+        "clicks": 65
+      }
+    ],
+    "devices": [
+      {
+        "name": "desktop",
+        "clicks": 50
+      },
+      {
+        "name": "bot",
+        "clicks": 15
+      }
+    ],
+    "browsers": [
+      {
+        "name": "Chrome",
+        "clicks": 50
+      },
+      {
+        "name": "Other",
+        "clicks": 15
+      }
+    ],
+    "referrers": [
+      {
+        "name": "direct",
+        "clicks": 65
+      }
+    ],
+    "code": "qKofOGq",
+    "link": {
+      "code": "qKofOGq",
+      "short_url": "https://d3rsimgoxz85kx.cloudfront.net/qKofOGq",
+      "long_url": "https://example.com/tv4-analytics",
+      "clicks": 65,
+      "created_at": "2026-11-05T16:24:17Z",
+      "expires_at": null,
+      "max_clicks": null,
+      "status": "active"
+    },
+    "recent_clicks": [
+      {
+        "timestamp": "2026-11-05T16:31:16Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:31:14Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:31:11Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:31:09Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:31:07Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:31:04Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:31:03Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:31:01Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:59Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:56Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:54Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:52Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:50Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:48Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:46Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:44Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:42Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:39Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:38Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      },
+      {
+        "timestamp": "2026-11-05T16:30:36Z",
+        "code": "qKofOGq",
+        "country": "AU",
+        "device": "desktop",
+        "browser": "Chrome",
+        "referrer": "direct",
+        "result": "valid"
+      }
+    ]
+  }
+}

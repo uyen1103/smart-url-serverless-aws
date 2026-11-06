@@ -138,9 +138,11 @@ Hộp thoại nêu link sắp xóa và cảnh báo thao tác không thể hoàn 
 
 ### 07 — Chống lạm dụng (chỉ xem)
 
-Trang chỉ xem danh sách link đáng ngờ hoặc bị chặn, số lượng tổng hợp và các lớp bảo vệ đang áp dụng.
+Màn 07 là trang chỉ xem, gồm bốn ô số liệu: **Tổng liên kết**, **Đang hoạt động**, **Liên kết bị gắn cờ** và **Tổng lượt click**. Bảng **Liên kết bị gắn cờ** có bộ lọc **Tất cả**, **Đáng ngờ** và **Bị chặn**; bên dưới là danh sách các lớp bảo vệ.
 
-Danh sách lớp bảo vệ gồm validate URL, rate limit, blocklist domain, phát hiện link đáng ngờ và AWS WAF nếu đã được bật. Không có nút chặn, bỏ qua hoặc gỡ chặn; mọi thay đổi trạng thái do backend/security xử lý.
+Chặn link được thực hiện tự động ở backend. Gỡ chặn do TV5 thực hiện bằng script. Trang không cung cấp thao tác quản trị trạng thái link.
+
+Danh sách lớp bảo vệ gồm validate URL, rate limit, blocklist domain, phát hiện link đáng ngờ và AWS WAF nếu đã được bật.
 
 ---
 
@@ -179,6 +181,5 @@ Các URL và mã HTTP là đề xuất tích hợp; cần thống nhất với A
 
 - Dùng nhãn trạng thái và nội dung thân thiện; không hiển thị lỗi thô, token hoặc thông tin nội bộ từ API.
 - Giữ dữ liệu form khi có lỗi mạng/validation để người dùng sửa hoặc thử lại.
-- Trạng thái quản lý link được lưu gắn với trình duyệt theo thiết kế hiện tại; không coi `owner_id` phía client hay header `X-Owner-Id` là cơ chế xác thực.
-- Tất cả hành động quản trị, chặn/gỡ chặn và xóa link phải được xác thực, phân quyền và kiểm tra lại ở backend.
+- Trạng thái quản lý link được lưu gắn với trình duyệt theo thiết kế hiện tại; header `X-Owner-Id` không phải đăng nhập. Yêu cầu xóa link được kiểm tra quyền ở backend qua header `X-Owner-Id`.
 - Làm rõ các mã lỗi, chính sách xóa dữ liệu và luồng `suspicious` với các nhóm API/security trước khi triển khai.

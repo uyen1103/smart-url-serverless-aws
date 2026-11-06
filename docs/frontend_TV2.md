@@ -1,6 +1,6 @@
-# Frontend TV2 
+# Frontend TV2
 
-Tài liệu này mô tả trạng thái phần frontend web TV2, cách chạy thử và các điều kiện cần có trước khi nối backend/deploy. 
+Tài liệu này mô tả trạng thái frontend web TV2, cách chạy thử và triển khai.
 
 Tài liệu nghiên cứu và wireframe ban đầu: [frontend_research.md](./frontend_research.md), [gui_wireframe.md](./gui_wireframe.md). API chuẩn để đối chiếu: [api_spec.yaml](./api_spec.yaml).
 
@@ -19,26 +19,38 @@ Giao diện tuân theo các token trong `frontend/css/tokens.css`; bố cục đ
 
 ## 2. Cấu trúc frontend
 
-| Đường dẫn | Trách nhiệm |
-|---|---|
-| `frontend/css/tokens.css` | Màu, typography, spacing và bo góc. |
-| `frontend/css/style.css` | Kiểu dùng chung, bố cục trang chủ/dashboard và responsive. |
-| `frontend/js/config.js` | API base URL, chế độ mock, domain public, liên hệ, Turnstile và chu kỳ polling. |
-| `frontend/js/api.js` | API client, chuẩn hóa lỗi, timeout, owner header và mock handlers. |
-| `frontend/js/owner.js` | Sinh UUID owner và lưu trong `localStorage`. |
-| `frontend/js/dom.js` | Tạo phần tử an toàn, gán text, kiểm tra URL attribute và tiện ích DOM. |
-| `frontend/js/shell.js` | Header/footer, toast, clipboard và trạng thái nút gửi. |
-| `frontend/js/validate.js` | Kiểm tra URL, alias và giới hạn click ở client. |
-| `frontend/js/home.js` | Form rút gọn link, xử lý kết quả/lỗi, sao chép và xác minh nếu được cấu hình. |
-| `frontend/js/dashboard.js`, `charts.js`, `poller.js` | Dashboard, biểu đồ SVG và polling có backoff khi lỗi. |
-| `frontend/js/links.js` | Danh sách, tìm kiếm, lọc, phân trang và xác nhận xóa. |
-| `frontend/js/warning.js`, `error.js` | Hiển thị các trạng thái cảnh báo/lỗi từ query string. |
-| `frontend/mock/` | Fixture link, thống kê và phản hồi mô phỏng; không phải dữ liệu backend. |
-| `frontend/deploy.ps1` | Preview/sync S3 và invalidation CloudFront có kiểm soát. |
+```text
+frontend/
+  index.html
+  dashboard.html
+  links.html
+  protection.html
+  warning.html
+  error.html
+  css/
+    style.css
+    tokens.css
+  js/
+    config.js
+    api.js
+    owner.js
+    validate.js
+    dom.js
+    shell.js
+    poller.js
+    charts.js
+    home.js
+    dashboard.js
+    links.js
+    protection.js
+    warning.js
+    error.js
+  mock/
+```
 
 ## 3. Hợp đồng tích hợp API
 
-API client dùng đường dẫn tương đối `/api` và gắn `X-Owner-Id` cho các request. Owner ID là UUID lưu trong trình duyệt, **không phải đăng nhập hay cơ chế xác thực**.
+API client dùng đường dẫn tương đối `/api` và gắn `X-Owner-Id` cho các request. Owner ID là UUID lưu trong trình duyệt, **không phải đăng nhập hay cơ chế xác thực**. Hợp đồng API tham chiếu [api_spec.yaml](./api_spec.yaml).
 
 | Màn hình/thao tác | Request theo `api_spec.yaml` | Ghi chú |
 |---|---|---|
@@ -49,27 +61,36 @@ API client dùng đường dẫn tương đối `/api` và gắn `X-Owner-Id` ch
 | Dashboard theo link | `GET /api/stats/{code}?from=...&to=...&granularity=...` | Query `code` trên URL trang dashboard chọn thống kê riêng của link. |
 | Truy cập mã rút gọn | `GET /{code}` | Redirect và mã lỗi do backend/CloudFront quyết định; frontend không tự xác định link còn hoạt động hay không. |
 
-Các lỗi được xử lý dựa trên `error.code`, không dựa vào nội dung `message`:
+Thông báo dưới đây lấy từ `getApiErrorMessage` trong `frontend/js/api.js`; lỗi API được chuẩn hóa dựa trên `error.code`:
 
-| HTTP / mã lỗi | Hiển thị |
+| Mã lỗi / tình huống | Thông báo trên giao diện |
 |---|---|
-| `400 invalid_url` | Thông báo dưới trường URL. |
-| `400 blocked_domain` | Thông báo domain không được chấp nhận cạnh URL. |
-| `400 captcha_failed` | Thông báo xác minh chống lạm dụng không thành công. |
-| `400 invalid_expires_in` | Thông báo thời hạn liên kết không hợp lệ. |
-| `400 invalid_request` | Thông báo yêu cầu không hợp lệ. |
-| `409 alias_taken` | Thông báo cạnh trường alias. |
-| `404 not_found` | Thông báo không tìm thấy liên kết. |
-| `410 link_expired` | Thông báo link đã hết hạn. |
-| `410 max_clicks_reached` | Thông báo link đã đạt giới hạn click. |
-| `403 link_blocked` | Thông báo link đã bị chặn. |
-| `403 link_suspicious` | Cảnh báo link cần được xem xét. |
-| `429 rate_limited` | Cảnh báo vàng và đếm ngược từ header `Retry-After`. |
-| `5xx internal_error` | Thông báo dịch vụ tạm thời không khả dụng. |
-| `5xx`, timeout, mất mạng | Thông báo lỗi và nút thử lại; giữ dữ liệu người dùng. |
-| Phản hồi không phải JSON | Chuẩn hóa thành lỗi phản hồi không hợp lệ; không giả làm kết quả thành công. |
+| `invalid_url` | “URL không hợp lệ hoặc không được hỗ trợ.” |
+| `blocked_domain` | “Domain này không được phép rút gọn.” |
+| `alias_taken` | “Alias đã được sử dụng. Hãy chọn tên khác.” |
+| `rate_limited` | “Bạn thao tác quá nhanh. Vui lòng chờ rồi thử lại.”; luồng tạo link dùng `Retry-After` để hiển thị thời gian chờ. |
+| `captcha_failed` | “Xác minh chống lạm dụng không thành công. Hãy thử lại.” |
+| `internal_error`, `server_error` hoặc HTTP 5xx | “Dịch vụ tạm thời không khả dụng. Vui lòng thử lại sau.” |
+| `network_error` | “Không thể kết nối máy chủ. Kiểm tra mạng rồi thử lại.” |
+| `timeout` | “Máy chủ phản hồi quá lâu. Hãy thử lại.” |
+| `invalid_response` | “Máy chủ trả về nội dung không hợp lệ. Vui lòng thử lại sau.”; dùng cho response không phải JSON hoặc JSON sai định dạng. |
+| `invalid_alias` | “Alias cần có 3–30 ký tự chữ, số hoặc dấu gạch ngang.” |
+| `invalid_max_clicks` | “Số click tối đa phải là số nguyên từ 1 trở lên.” |
+| `invalid_expires_in` | “Thời hạn liên kết không hợp lệ.” |
+| `invalid_request` | “Yêu cầu không hợp lệ. Hãy kiểm tra lại thông tin.” |
+| `not_found` | “Không tìm thấy liên kết.” |
+| `unauthorized` | “Không thể xác thực mã chủ sở hữu của trình duyệt này.” |
+| `forbidden` hoặc HTTP 403 | “Yêu cầu bị từ chối bởi lớp bảo vệ. Hãy kiểm tra thông tin và thử lại.” |
+| `link_expired` | “Link đã hết hạn.” |
+| `link_blocked` | “Link đã bị chặn.” |
+| `link_suspicious` | “Link cần được xem xét trước khi tiếp tục.” |
+| `max_clicks_reached` | “Link đã đạt giới hạn click.” |
+| `mock_storage_invalid` | “Dữ liệu demo lưu trong trình duyệt bị lỗi. Hãy xóa dữ liệu demo rồi thử lại.” (mock) |
+| `storage_unavailable` | “Không lưu được dữ liệu demo trong trình duyệt.” (mock) |
+| HTTP 429 | Thông báo rate limit; `Retry-After` được đọc nếu có. |
+| Mã lỗi khác | “Không thể hoàn tất yêu cầu. Vui lòng thử lại.” |
 
-**Cần phối hợp TV1 trước khi chuyển khỏi mock:** xác nhận API đã triển khai đúng base path `/api`, schema, header owner, CORS (nếu khác origin), phản hồi `Retry-After`, status redirect/error và dữ liệu thống kê. Không đổi frontend sang gọi production khi chưa có endpoint môi trường thử nghiệm.
+`ApiError` cũng đánh dấu HTTP 5xx và 429 là có thể thử lại; mã lỗi server khác không có ánh xạ riêng dùng thông báo chung theo status. Phản hồi không phải JSON hoặc JSON sai định dạng không được coi là thành công.
 
 Dashboard lấy danh sách lọc bằng nhiều request `limit: 50`, tối đa 4 trang và chống cursor lặp; nếu còn dữ liệu sẽ thông báo giới hạn 200 link.
 
@@ -77,7 +98,7 @@ Dashboard lấy danh sách lọc bằng nhiều request `limit: 50`, tối đa 4
 
 ## 4. Mock và chạy thử giao diện
 
-Mặc định hiện tại `USE_MOCK` đang bật trong `frontend/js/config.js`; các request trình duyệt vì vậy chưa gọi API thật. `?mock=1` chỉ có tác dụng trên localhost/127.0.0.1. Khi deploy, đổi `USE_MOCK=false` và chỉ điền `TURNSTILE_SITE_KEY` sau khi TV5 bật secret backend đồng thời.
+Mock được bật/tắt bằng `USE_MOCK` trong `frontend/js/config.js`; hiện tại giá trị là `false`. `?mock=1` chỉ có tác dụng trên `localhost` hoặc `127.0.0.1`; domain deploy luôn tôn trọng `USE_MOCK`. `TURNSTILE_SITE_KEY` hiện để trống.
 
 Chạy từ thư mục gốc repository:
 
@@ -101,18 +122,26 @@ Các đường dẫn kiểm thử:
 Kịch bản mock rút gọn: `ok`, `duplicate`, `invalid_url`, `blocked_domain`, `alias_taken`, `rate_limited`, `network`, `server_error`, `waf_html`. Kịch bản dashboard dùng `statsScenario=normal`, `empty`, `spike`, `suspicious` hoặc `network`.
 
 
-## 5. Deploy và điều kiện còn chờ
+## 5. Deploy và kiểm thử
 
-Có script hỗ trợ triển khai frontend: `frontend/deploy.ps1` cho PowerShell và `frontend/deploy.sh` cho Bash. Đọc hướng dẫn ngắn tại [README_DEPLOY.md](../frontend/README_DEPLOY.md); PowerShell dùng đúng tham số `-Bucket`, `-DistributionId`, `-Execute`, `-Invalidate`.
+Frontend đã được deploy thật ngày 2026-11-05 từ CloudShell lên https://d3rsimgoxz85kx.cloudfront.net bằng `frontend/deploy.sh`. Script đọc `S3_BUCKET` và `CLOUDFRONT_DISTRIBUTION_ID`; chỉ ghi các giá trị thật trong biến môi trường và dùng placeholder trong tài liệu:
 
-Ví dụ PowerShell sau khi TV5 cung cấp bucket/distribution và AWS CLI đã cấu hình:
-
-```powershell
-$env:S3_BUCKET = "<bucket-frontend>"
-$env:CLOUDFRONT_DISTRIBUTION_ID = "<distribution-id>"
-.\frontend\deploy.ps1
-.\frontend\deploy.ps1 -Execute -Invalidate
+```bash
+export S3_BUCKET="<tên-bucket>"
+export CLOUDFRONT_DISTRIBUTION_ID="<distribution-id>"
+bash frontend/deploy.sh
+EXECUTE=true INVALIDATE=true bash frontend/deploy.sh
 ```
 
-**Chưa deploy trong tài liệu này.** Cần TV5 cung cấp bucket private, CloudFront distribution/OAC, behaviors, domain và quyền AWS; cần xác nhận policy cache/invalidation. Cần TV1 cung cấp API thử nghiệm trước khi chuyển `USE_MOCK` sang `false`. Không lưu access key/secret trong repository hoặc script.
+Lệnh đầu chỉ xem trước; lệnh thứ hai thực hiện sync và invalidation. Biến export sẽ mất khi phiên CloudShell đóng nên cần đặt lại ở phiên mới. Script loại `prototype/`, `deploy.ps1`, `deploy.sh` và `README_DEPLOY.md` khỏi sync; `mock/` vẫn được sync. Invalidation dùng danh sách khai báo gồm các trang HTML, `/css/*`, `/js/*` và `/mock/*`; script không tự so sánh file để chỉ tìm các đường dẫn đã thay đổi.
 
+Kết quả kiểm thử giao diện/API và các ca chưa chạy được ghi trong [e2e_matrix.md](./e2e_matrix.md); ảnh nằm trong `screenshots/e2e/` và không thay thế bằng chứng HTTP. `bad.example` bị backend trả `invalid_url` vì DNS không phân giải, nên không chứng minh kết quả blocklist. Lỗi mạng được mô phỏng bằng DevTools Offline, chưa thử bằng cách tắt Wi-Fi. Sáu quan sát chưa chặn merge:
+
+1. Dashboard ghi “Tất cả link của tôi” nhưng số liệu là toàn hệ thống; khác số liệu trang Chống lạm dụng.
+2. Ô alias hiển thị tiền tố cố định `linkpulse.vn/`.
+3. Trục tung biểu đồ Dashboard lặp nhãn “2”.
+4. Hộp thoại xác nhận xóa là hộp thoại mặc định của trình duyệt.
+5. `deploy.sh` vẫn upload `mock/` lên S3 dù `USE_MOCK=false`.
+6. Issue ghi 7 trang; frontend thực tế có 6 trang.
+
+Các ca chưa chạy và lý do được liệt kê trong ma trận: chưa có domain blocklist để kiểm tra API; rate limit không chạy trong lượt này; Turnstile chưa bật ở backend; chưa có link hết hạn hoặc dữ liệu `max_clicks`; chưa gây được lỗi 5xx; chưa kiểm tra 403 HTML. Trùng URL, URL sai và alias đã có kết quả API; ảnh UI liên quan chỉ ghi lại trạng thái trình duyệt, không thay thế kết quả API.
