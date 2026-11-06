@@ -25,12 +25,14 @@ Các bảng được tạo và cấu hình thông qua AWS CloudFormation trong `
 | `short_code` (PK) | Mã URL rút gọn |
 | `long_url` | URL gốc |
 | `created_at` | Thời điểm tạo |
-| `expires_at` | Thời điểm hết hạn |
+| `expires_at` | Thời điểm hết hạn, lưu dưới dạng chuỗi ISO 8601 |
 | `owner_id` | Chủ sở hữu URL |
 | `status` | Trạng thái URL |
 | `max_clicks` | Giới hạn lượt truy cập |
 | `click_count` | Số lượt truy cập |
 | Các thuộc tính khác | Theo dữ liệu nghiệp vụ của URL |
+
+**Lưu ý:** Thuộc tính `expires_at` của bảng `urls` được lưu dưới dạng chuỗi ISO 8601 để phục vụ kiểm tra thời hạn URL trong ứng dụng. Bảng `urls` không bật DynamoDB TTL.
 
 **Global Secondary Index: `owner-index`**
 
@@ -158,6 +160,7 @@ Cấu hình năng lực đọc và ghi trong `backend/template.yaml`:
 | **Tổng cộng** | **23** | **23** |
 
 Các giá trị trên là cấu hình Provisioned Capacity trong template, không phải số liệu sử dụng thực tế.
+
 ### 3.2.1. Capacity và chi phí tham chiếu
 
 Tổng Provisioned Capacity của hệ thống:
@@ -215,6 +218,7 @@ Cấu hình PITR áp dụng cho bảng `urls` theo điều kiện trong CloudFor
 - Cập nhật bộ đếm bằng `ADD` nguyên tử giúp tránh thao tác đọc rồi ghi lại thủ công.
 - IP được băm trước khi lưu nhằm hạn chế lưu trữ thông tin IP thật.
 - PITR của bảng `urls` được điều khiển bằng tham số `EnablePitr` và mặc định tắt.
+- WAF tùy chọn, mặc định tắt.
 
 ## 5. Giới hạn đã biết
 
