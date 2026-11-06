@@ -56,7 +56,7 @@ CloudFront không có pattern khớp chính xác “một path segment bất k�
 
 Nếu S3 private trả `403` khi object không tồn tại, không ánh xạ mọi `403` của distribution sang trang 404 một cách máy móc: có thể che mất lỗi/response 403 từ API, gồm cả trạng thái link bị chặn. Chỉ thêm custom error response sau khi kiểm tra hành vi API và routing thực tế.
 
-Hosting S3 + CloudFront nằm trong free tier. Không dùng domain riêng.
+Hosting dùng S3 riêng tư + CloudFront (OAC), nằm trong free tier; không dùng WAF mặc định và không dùng tên miền riêng.
 
 ## 2. Wireframe
 
@@ -88,7 +88,7 @@ Hosting S3 + CloudFront nằm trong free tier. Không dùng domain riêng.
 | `429 rate_limited` | Hiển thị thời gian chờ từ `Retry-After` |
 | Lỗi mạng hoặc `5xx` | Hiển thị thông báo dễ hiểu và nút thử lại |
 
-Các mã và schema trên là đề xuất của luồng; cần thống nhất với TV1. Token Turnstile phải được backend xác minh, không coi việc widget hiển thị là bằng chứng xác thực.
+Mã lỗi và schema tham chiếu theo [api_spec.yaml](./api_spec.yaml). Token Turnstile phải được backend xác minh, không coi việc widget hiển thị là bằng chứng xác thực.
 
 ## 4. Luồng truy cập link rút gọn
 
