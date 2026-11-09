@@ -24,6 +24,7 @@
 | Lỗi mạng mô phỏng | DevTools Offline làm yêu cầu `shorten` thất bại; giao diện báo không thể kết nối máy chủ. | Đạt mô phỏng Offline; chưa thử ngắt Wi-Fi | [12-offline-devtools](screenshots/e2e/12-offline-devtools.png), [13-offline-friendly-error](screenshots/e2e/13-offline-friendly-error.png) |
 | Frontend trên S3 | Ảnh hiển thị 6 trang HTML, `favicon.svg`, `css/`, `js/` và thư mục `mock/` (2026-11-05). | Đạt | [01-s3-bucket](screenshots/aws/01-s3-bucket.png) |
 | CloudFront | Ảnh hiển thị 1 distribution ở trạng thái Enabled và domain `d3rsimgoxz85kx.cloudfront.net`; distribution ID bị che (2026-11-05). | Đạt | [02-cloudfront-enabled-domain](screenshots/aws/02-cloudfront-enabled-domain.png) |
+| Kiểm bản deploy thật | Kiểm tra ngày 09/11/2026 tại `https://d3rsimgoxz85kx.cloudfront.net/`: `USE_MOCK=false`; 6 trang (index, links, dashboard, protection, warning, error) tải đúng; S3 không còn `mock/`. Console chỉ có lỗi `Uncaught (in promise)` tại `onboarding.js:48`, không thuộc code dự án và nghi do extension trình duyệt. | Đạt | [01_index](screenshots/e2e/01_index.png), [02_links](screenshots/e2e/02_links.png), [03_dashboard](screenshots/e2e/03_dashboard.png), [04_protection](screenshots/e2e/04_protection.png), [05_warning](screenshots/e2e/05_warning.png), [06_error](screenshots/e2e/06_error.png) |
 
 ## API
 
@@ -42,9 +43,9 @@
 
 ## Quan sát chưa chặn merge
 
-1. Ô alias trên `index.html`: đã sửa trong code, cần xác nhận sau khi deploy lại.
-2. Trục tung biểu đồ Dashboard: mock normal có nhãn 0, 8, 16, 24, 32; mock spike có nhãn 0, 70, 140, 210, 280; spike sửa còn 0–2: chưa kiểm. Đã sửa trong code, cần xác nhận sau khi deploy lại.
-3. Hộp thoại xác nhận xóa dùng hộp thoại mặc định của trình duyệt.
-4. `deploy.sh` và `deploy.ps1` loại `mock/` khỏi nội dung deploy; đã sửa trong code, cần xác nhận sau khi deploy lại. Ảnh S3 ngày 2026-11-05 vẫn hiển thị thư mục `mock/`.
-5. Dashboard dùng nhãn “Toàn hệ thống” trong code; cần xác nhận sau khi deploy lại.
+1. `frontend/dashboard.html` dòng 32 đổi “Tất cả link của tôi” thành “Toàn hệ thống”. — Đã sửa.
+2. `frontend/index.html` bỏ chữ cứng `linkpulse.vn/`, lấy domain từ `PUBLIC_DOMAIN` trong `config.js`; ô alias trên bản deploy hiện `d3rsimgoxz85kx.cloudfront.net/`. — Đã sửa.
+3. Trục tung biểu đồ Dashboard không còn lặp nhãn “2”. — Đã sửa.
+4. `deploy.sh` và `deploy.ps1` exclude `mock/*`, bỏ `/mock/*` khỏi invalidation. — Đã sửa.
+5. Hộp thoại xác nhận xóa dùng hộp thoại mặc định của trình duyệt.
 6. Issue ghi 7 trang; frontend hiện có 6 trang HTML.
