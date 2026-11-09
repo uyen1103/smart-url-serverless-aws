@@ -99,6 +99,7 @@ Dashboard lấy danh sách lọc bằng nhiều request `limit: 50`, tối đa 4
 ## 4. Mock và chạy thử giao diện
 
 Mock được bật/tắt bằng `USE_MOCK` trong `frontend/js/config.js`; hiện tại giá trị là `false`. `?mock=1` chỉ có tác dụng trên `localhost` hoặc `127.0.0.1`; domain deploy luôn tôn trọng `USE_MOCK`. `TURNSTILE_SITE_KEY` hiện để trống.
+`?mock=1` và scenario `waf_html` chỉ chạy trên localhost; thư mục `mock/` không được deploy lên S3.
 
 Chạy từ thư mục gốc repository:
 
@@ -133,15 +134,15 @@ bash frontend/deploy.sh
 EXECUTE=true INVALIDATE=true bash frontend/deploy.sh
 ```
 
-Lệnh đầu chỉ xem trước; lệnh thứ hai thực hiện sync và invalidation. Biến export sẽ mất khi phiên CloudShell đóng nên cần đặt lại ở phiên mới. Script loại `prototype/`, `deploy.ps1`, `deploy.sh` và `README_DEPLOY.md` khỏi sync; `mock/` vẫn được sync. Invalidation dùng danh sách khai báo gồm các trang HTML, `/css/*`, `/js/*` và `/mock/*`; script không tự so sánh file để chỉ tìm các đường dẫn đã thay đổi.
+Lệnh đầu chỉ xem trước; lệnh thứ hai thực hiện sync và invalidation. Biến export sẽ mất khi phiên CloudShell đóng nên cần đặt lại ở phiên mới. Script loại `prototype/`, `mock/`, `deploy.ps1`, `deploy.sh` và `README_DEPLOY.md` khỏi sync. Invalidation dùng danh sách khai báo gồm các trang HTML, `/css/*` và `/js/*`; script không tự so sánh file để chỉ tìm các đường dẫn đã thay đổi. Chưa xác nhận thay đổi này sau khi deploy lại; ảnh S3 ngày 2026-11-05 vẫn hiển thị `mock/`.
 
 Kết quả kiểm thử giao diện/API và các ca chưa chạy được ghi trong [e2e_matrix.md](./e2e_matrix.md); ảnh nằm trong `screenshots/e2e/` và không thay thế bằng chứng HTTP. `bad.example` bị backend trả `invalid_url` vì DNS không phân giải, nên không chứng minh kết quả blocklist. Lỗi mạng được mô phỏng bằng DevTools Offline, chưa thử bằng cách tắt Wi-Fi. Sáu quan sát chưa chặn merge:
 
-1. Dashboard ghi “Tất cả link của tôi” nhưng số liệu là toàn hệ thống; khác số liệu trang Chống lạm dụng.
-2. Ô alias hiển thị tiền tố cố định `linkpulse.vn/`.
-3. Trục tung biểu đồ Dashboard lặp nhãn “2”.
+1. Dashboard dùng nhãn “Toàn hệ thống” trong code; cần xác nhận sau khi deploy lại. Số liệu khác trang Chống lạm dụng.
+2. Ô alias đã sửa trong code; cần xác nhận sau khi deploy lại.
+3. Mock normal có nhãn trục tung 0, 8, 16, 24, 32; mock spike có 0, 70, 140, 210, 280. Dữ liệu spike sửa còn 0–2 chưa kiểm; đã sửa trong code, cần xác nhận sau khi deploy lại.
 4. Hộp thoại xác nhận xóa là hộp thoại mặc định của trình duyệt.
-5. `deploy.sh` vẫn upload `mock/` lên S3 dù `USE_MOCK=false`.
+5. `deploy.sh` và `deploy.ps1` loại `mock/` khỏi nội dung deploy trong code; cần xác nhận sau khi deploy lại.
 6. Issue ghi 7 trang; frontend thực tế có 6 trang.
 
-Các ca chưa chạy và lý do được liệt kê trong ma trận: chưa có domain blocklist để kiểm tra API; rate limit không chạy trong lượt này; Turnstile chưa bật ở backend; chưa có link hết hạn hoặc dữ liệu `max_clicks`; chưa gây được lỗi 5xx; chưa kiểm tra 403 HTML. Trùng URL, URL sai và alias đã có kết quả API; ảnh UI liên quan chỉ ghi lại trạng thái trình duyệt, không thay thế kết quả API.
+Các ca chưa chạy và lý do được liệt kê trong ma trận: chưa có domain blocklist để kiểm tra API; rate limit không chạy trong lượt này; Turnstile chưa bật ở backend; hết hạn chưa chạy; max_clicks mới chỉ quan sát trạng thái “Đạt giới hạn” trong danh sách, chưa mở link lần 3; chưa gây được lỗi 5xx; WAF thật chưa kiểm tra (chỉ kiểm tra giao diện bằng mock `waf_html`). Trùng URL, URL sai và alias đã có kết quả API; ảnh UI liên quan chỉ ghi lại trạng thái trình duyệt, không thay thế kết quả API.
