@@ -2,9 +2,10 @@ import { el, setText } from "./dom.js";
 import { ApiError, getApiErrorMessage, isUsingMock, shortenLink } from "./api.js";
 import { setBusy, mountShell, toast, copyText } from "./shell.js";
 import { validateAlias, validateMaxClicks, validateUrl } from "./validate.js";
-import { TURNSTILE_SITE_KEY } from "./config.js";
+import { PUBLIC_DOMAIN, TURNSTILE_SITE_KEY } from "./config.js";
 
 mountShell();
+document.querySelector(".alias-prefix").textContent = `${PUBLIC_DOMAIN}/`;
 const demoScenario = document.querySelector("[data-demo-scenario]");
 if (demoScenario) {
   const search = new URLSearchParams(window.location.search);

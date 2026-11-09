@@ -28,12 +28,13 @@ $syncArguments = @(
   "s3", "sync", $root, $target,
   "--cache-control", "max-age=300,s-maxage=300",
   "--exclude", "prototype/*",
+  "--exclude", "mock/*",
   "--exclude", "deploy.ps1",
   "--exclude", "deploy.sh",
   "--exclude", "README_DEPLOY.md"
 )
 $htmlFiles = @("index.html", "dashboard.html", "links.html", "protection.html", "warning.html", "error.html")
-$invalidationPaths = @("/index.html", "/dashboard.html", "/links.html", "/protection.html", "/warning.html", "/error.html", "/css/*", "/js/*", "/mock/*")
+$invalidationPaths = @("/index.html", "/dashboard.html", "/links.html", "/protection.html", "/warning.html", "/error.html", "/css/*", "/js/*")
 
 if (-not $Execute) {
   Write-Output "Chế độ xem trước; chưa tải file lên. Đích bucket root: $target (dùng bucket riêng cho frontend)"
