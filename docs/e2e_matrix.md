@@ -22,8 +22,8 @@
 | Dashboard | Tổng 9 click (3 hợp lệ, 6 bot); biểu đồ cập nhật trong vài giây sau click lúc 18:17 (18:17–18:44). | Đạt | [04-dashboard-system-wide](screenshots/e2e/04-dashboard-system-wide.png) |
 | Chống lạm dụng chỉ xem | Có 4 số liệu (1 / 1 / 0 / 3), danh sách gắn cờ trống, không có nút quản trị (18:17–18:44). | Đạt | [05-protection-readonly](screenshots/e2e/05-protection-readonly.png) |
 | Lỗi mạng mô phỏng | DevTools Offline làm yêu cầu `shorten` thất bại; giao diện báo không thể kết nối máy chủ. | Đạt mô phỏng Offline; chưa thử ngắt Wi-Fi | [12-offline-devtools](screenshots/e2e/12-offline-devtools.png), [13-offline-friendly-error](screenshots/e2e/13-offline-friendly-error.png) |
-| Frontend trên S3 | Danh sách hiển thị 6 trang HTML, `css/` và `js/` (2026-11-05). | Đạt | [01-s3-bucket](screenshots/aws/01-s3-bucket.png) |
-| CloudFront | Distribution ở trạng thái Enabled và domain `d3rsimgoxz85kx.cloudfront.net` (2026-11-05). | Đạt | [02-cloudfront-enabled-domain](screenshots/aws/02-cloudfront-enabled-domain.png) |
+| Frontend trên S3 | Ảnh hiển thị 6 trang HTML, `favicon.svg`, `css/`, `js/` và thư mục `mock/` (2026-11-05). | Đạt | [01-s3-bucket](screenshots/aws/01-s3-bucket.png) |
+| CloudFront | Ảnh hiển thị 1 distribution ở trạng thái Enabled và domain `d3rsimgoxz85kx.cloudfront.net`; distribution ID bị che (2026-11-05). | Đạt | [02-cloudfront-enabled-domain](screenshots/aws/02-cloudfront-enabled-domain.png) |
 
 ## API
 
@@ -36,13 +36,15 @@
 | Domain trong blocklist | Chưa chạy — chưa có domain thật trong blocklist; `bad.example` bị backend loại ở bước DNS trước blocklist. | Chưa chạy |
 | Rate limit | Chưa chạy — rate limit không được kiểm tra. | Chưa chạy |
 | Turnstile sai/thiếu | Chưa chạy — backend chưa bật Turnstile. | Chưa chạy |
-| Hết hạn / max clicks | Giao diện hiển thị trạng thái “Đạt giới hạn” ở 2 click ([ảnh](screenshots/e2e/20-links-multiple-states.png)); hết hạn chưa kiểm tra. | Đạt max_clicks; hết hạn chưa chạy |
+| Hết hạn / max clicks | Chưa mở link lần 3; ảnh chỉ cho thấy trạng thái “Đạt giới hạn” ở 2 click trong danh sách Link của tôi ([ảnh](screenshots/e2e/20-links-multiple-states.png)); hết hạn chưa kiểm tra. | Đã quan sát trên giao diện; hết hạn chưa chạy |
 | Lỗi 5xx | Chưa chạy — không gây lỗi cố ý trên môi trường dùng chung. | Chưa chạy |
-| Phản hồi 403 HTML | Chưa chạy — chưa kiểm tra. | Chưa chạy |
+| Phản hồi 403 HTML | 2026-11-09 20:41, localhost:8000, mock `waf_html`: giao diện hiện “Chưa thể tạo liên kết. Máy chủ trả về nội dung không hợp lệ. Vui lòng thử lại sau.” kèm nút “Thử lại”; trang không vỡ, không lộ chữ thô ([ảnh](screenshots/e2e/21-waf-html-mock.png)). WAF thật chưa kiểm tra. | Đạt phần giao diện (mock) |
 
 ## Quan sát chưa chặn merge
 
-1. Ô alias trên `index.html` hiển thị tiền tố cố định `linkpulse.vn/`.
-2. Trục tung biểu đồ Dashboard lặp nhãn “2”.
+1. Ô alias trên `index.html`: đã sửa trong code, cần xác nhận sau khi deploy lại.
+2. Trục tung biểu đồ Dashboard: mock normal có nhãn 0, 8, 16, 24, 32; mock spike có nhãn 0, 70, 140, 210, 280; spike sửa còn 0–2: chưa kiểm. Đã sửa trong code, cần xác nhận sau khi deploy lại.
 3. Hộp thoại xác nhận xóa dùng hộp thoại mặc định của trình duyệt.
-4. `deploy.sh` vẫn đẩy `mock/` lên S3 dù `USE_MOCK=false`; TV5/TV1 quyết định có sửa không.
+4. `deploy.sh` và `deploy.ps1` loại `mock/` khỏi nội dung deploy; đã sửa trong code, cần xác nhận sau khi deploy lại. Ảnh S3 ngày 2026-11-05 vẫn hiển thị thư mục `mock/`.
+5. Dashboard dùng nhãn “Toàn hệ thống” trong code; cần xác nhận sau khi deploy lại.
+6. Issue ghi 7 trang; frontend hiện có 6 trang HTML.

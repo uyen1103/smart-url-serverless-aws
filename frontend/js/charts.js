@@ -42,7 +42,7 @@ export function renderTimeline(container, timeline = []) {
   const botValues = timeline.map((point) => finiteNumber(point.bot_clicks));
   // API tính tổng gồm cả bot; phần click hợp lệ là tổng trừ bot.
   const validValues = totalValues.map((value, index) => Math.max(0, value - botValues[index]));
-  const max = Math.max(1, ...totalValues);
+  const max = Math.max(4, ...totalValues);
   const toPoints = (values) => values.map((value, index) => {
     const x = pad.left + (values.length === 1 ? chartWidth / 2 : (index / (values.length - 1)) * chartWidth);
     const y = pad.top + chartHeight - (value / max) * chartHeight;
