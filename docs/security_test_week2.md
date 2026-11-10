@@ -71,7 +71,9 @@ Chi tiết từng lần deploy, changeset và bảng lệnh `curl` nằm ở [`d
    aws: [ERROR]: An error occurred (AccessDenied) when calling the ListPolicies operation: ...
    ```
 
-   Vì vậy **không chụp được màn hình IAM Console**. Bằng chứng cho phần này là output lỗi trên.
+   Bằng chứng cho phần này là output lỗi trên. Riêng mục **chi phí $0** đã có thêm ảnh chụp trực tiếp
+   từ AWS Console (mục 7.2): đăng nhập bằng **root user** của tài khoản `567627324019` rồi mở
+   **Billing and Cost Management → Cost Explorer** — `Total cost -$0.00` cho kỳ `2026-11-01 — 2026-11-10`.
 4. User này bị SCP của tổ chức chặn `us-east-1` cho CloudFormation:
 
    ```text
@@ -472,7 +474,10 @@ Domain đã được **gỡ khỏi** blocklist sau khi thử; bảng về lại 
 
 ## 7. Chi phí $0
 
-> **Đã kiểm tra** bằng Cost Explorer API (ngày 2026-11-10).
+> **Đã kiểm tra** bằng Cost Explorer API (ngày 2026-11-10) **và chụp thêm trang Cost Explorer
+> trên AWS Console** (ngày 2026-11-10) — bằng chứng console đã có, xem mục "Ảnh bằng chứng" bên dưới.
+
+### 7.1. Cost Explorer API
 
 ```bash
 aws ce get-cost-and-usage --time-period Start=2026-10-01,End=2026-11-11 \
@@ -486,16 +491,32 @@ aws ce get-cost-and-usage --time-period Start=2026-10-01,End=2026-11-11 \
 
 Tổng chi phí thực = **0 USD** (các con số ở mức 10⁻⁹ USD là phần credit/thuế cân bằng, không phải chi phí thật).
 
-- **Billing Console: không đủ quyền.** User `linkpulse-tv5` không có `LoginProfile` nên không đăng nhập
-  được AWS Console; các API quản trị IAM cũng bị `AccessDenied`. Vì vậy bằng chứng lấy từ **Cost
-  Explorer API** (cùng dữ liệu với trang Billing), không cần xin thêm quyền.
 - **AWS Budget** đã có: `linkpulse-monthly-ap-southeast-2-5usd`, giới hạn `5.0 USD` / tháng, lọc
   theo Region `ap-southeast-2`.
 - **Không có phí phát sinh** vì: `BillingMode=PROVISIONED` (không trả theo số lần gọi Lambda),
   `EnablePitr=false`, WAF tắt (`EnableWaf=false`), CloudWatch log retention 7 ngày, DynamoDB on-demand
   dưới ngưỡng miễn phí.
 
-Ảnh bằng chứng: [07-billing-cost-zero](../screenshots/aws/lan3/07-billing-cost-zero.png)
+### 7.2. Trang Cost Explorer trên AWS Console
+
+Đăng nhập console bằng **root user** của tài khoản `567627324019` (user `linkpulse-tv5` không có
+`LoginProfile` nên không đăng nhập được console), mở **Billing and Cost Management → Cost Explorer**:
+
+| Thông số trên màn hình | Giá trị |
+|---|---|
+| Account | `567627324019` |
+| Date range | `2026-11-01 — 2026-11-10` (tháng 11/2026, đúng kỳ chạy test) |
+| Granularity | `Monthly` |
+| Group by | `Service` |
+| **Total cost** | **`-$0.00`** |
+| Số dịch vụ có phát sinh | `13` (CloudWatch, CloudFront, AWS Key Management Service, Amazon S3, AWS Glue, AWS Lambda, AWS Secrets Manager, Amazon DynamoDB, Amazon API Gateway, AWS CloudFormation, Amazon SNS, Amazon SQS, AWS Tax) |
+
+`-$0.00` nghĩa là **$0**: các phần âm ở mức 10⁻⁹ USD là credit/thuế cân bằng, khớp đúng với kết quả
+Cost Explorer API ở mục 7.1 (cùng một nguồn dữ liệu).
+
+Ảnh bằng chứng:
+[07-billing-cost-zero](../screenshots/aws/lan3/07-billing-cost-zero.png) (API) ·
+[09-cost-explorer-console](../screenshots/aws/lan3/09-cost-explorer-console.png) (AWS Console)
 
 ### Kiểm `architecture.png` đã có ghi chú `verdict_cache` chưa
 
@@ -522,7 +543,7 @@ Kiểm tra: `docs/architecture.png` và `docs/architecture.md` đều đã đồ
 | 4 | Chặn gọi thẳng origin | GET API domain không có header | `403` | ☑ `403` (`reason: origin_not_allowed`) | [smoke-direct-403](../screenshots/aws/lan2/smoke-direct-403.png) |
 | 5 | Gắn cờ suspicious | `get-item` bảng `urls` | `status = suspicious` | ☑ `suspicious` / `bot_traffic` (link `0R4b1nm` của TV4, giữ nguyên) | [08](../screenshots/aws/lan3/08-suspicious-flagged-link.png), PR #31 |
 | 6 | Blocklist domain | POST URL domain bị chặn | `400 blocked_domain` | ☑ `400` `blocked_domain` với domain thật `example.org`, đã gỡ sau khi thử | [03](../screenshots/aws/lan3/03-blocklist-list.png), [04](../screenshots/aws/lan3/04-blocked-domain-body.png) |
-| 7 | Chi phí $0 | Cost Explorer | `$0` | ☑ mọi dịch vụ `0 USD`; Billing Console không đủ quyền | [07](../screenshots/aws/lan3/07-billing-cost-zero.png) |
+| 7 | Chi phí $0 | Cost Explorer | `$0` | ☑ API cho mọi dịch vụ `0 USD` **và** trang Cost Explorer trên Console cho `Total cost -$0.00` (13 dịch vụ) | [07](../screenshots/aws/lan3/07-billing-cost-zero.png), [09](../screenshots/aws/lan3/09-cost-explorer-console.png) |
 
 Ảnh chụp AWS Console cần chụp cho: WAF `BlockedRequests` theo rule (mục 1 — **chưa chạy**),
 CloudWatch throttling của API Gateway (đã có bằng chứng bằng output HTTP ở mục 2),

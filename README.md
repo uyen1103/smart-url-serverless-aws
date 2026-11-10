@@ -350,6 +350,17 @@ Trên Windows, chạy script Python với `PYTHONUTF8=1` và `PYTHONIOENCODING=u
 `UnicodeEncodeError` khi in tiếng Việt. Kết quả và ảnh bằng chứng ghi ở
 [`docs/security_test_week2.md`](docs/security_test_week2.md).
 
+### Ảnh bằng chứng trên AWS Console
+
+Một số bằng chứng cần ảnh chụp từ AWS Console (IAM user `linkpulse-tv5` không có `LoginProfile`
+nên **không** đăng nhập được console — dùng root user hoặc cấp `Console access` cho user):
+
+| Bằng chứng | Đường dẫn console | File ảnh |
+|---|---|---|
+| Chi phí $0 | Billing and Cost Management → Cost Explorer | `docs/screenshots/aws/lan3/09-cost-explorer-console.png` |
+
+Các ảnh còn lại (`01`–`08`) dựng từ output thật của AWS CLI bằng `scripts/render_evidence.py`.
+
 ## Phân công
 
 | Module | Phạm vi | Hạ tầng do module quản lý |
