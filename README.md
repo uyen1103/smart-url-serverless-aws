@@ -57,7 +57,7 @@ Tài liệu chi tiết: [`docs/architecture.md`](docs/architecture.md), [`docs/t
 | `infra/edge.yaml` | Stack biên: CloudFront, S3 giao diện, WAF (bật/tắt bằng tham số) |
 | `frontend/` | Giao diện tĩnh, script nạp lên S3 |
 | `database/` | Script tạo bảng DynamoDB và tài liệu schema |
-| `scripts/` | Script vận hành: kiểm tra tài khoản, IAM nền tảng, quản lý blocklist |
+| `scripts/` | Script vận hành: kiểm tra tài khoản, IAM nền tảng, quản lý blocklist, kiểm thử rate limit |
 | `terraform/` | AWS Budget |
 | `docs/` | Tài liệu kiến trúc, bảo mật, quyết định chung của nhóm |
 | `tests/` | Test dùng chung (pytest + moto) |
@@ -329,6 +329,27 @@ Mặc định script chỉ in lệnh để xem trước. Thêm `--execute` (bash
 chạy thật. Tên bảng được tra tự động từ output của stack backend; đặt `BLOCKLIST_TABLE` và
 `URLS_TABLE` nếu cần chỉ định tay.
 
+## Kiểm thử lớp chống lạm dụng
+
+| Script | Công dụng |
+|---|---|
+| `scripts/test_ratelimit.sh` | Gửi 15 POST `/api/shorten` liên tiếp, in mã trả về + header `Retry-After`, tự xoá link test. Kỳ vọng: 10 request đầu `201`, từ request 11 là `429`. |
+| `scripts/test_throttling.py` | Gửi N request song song (thread + `Barrier`) để vượt ngưỡng 10 rps của API Gateway, phân loại 2 lớp `429`, tự xoá link test. |
+| `scripts/dyn_urls.sh` | Truy vấn nhanh bảng `urls` (trạng thái link, `flag_reason`). |
+| `scripts/render_evidence.py` | Dựng ảnh PNG từ output kiểm thử để dán vào tài liệu. |
+
+```bash
+# Lớp rate limit theo IP (10 lần/phút)
+bash scripts/test_ratelimit.sh
+
+# Lớp throttling của API Gateway (10 rps, burst 20)
+python scripts/test_throttling.py --par 120 --conc 60
+```
+
+Trên Windows, chạy script Python với `PYTHONUTF8=1` và `PYTHONIOENCODING=utf-8` để không lỗi
+`UnicodeEncodeError` khi in tiếng Việt. Kết quả và ảnh bằng chứng ghi ở
+[`docs/security_test_week2.md`](docs/security_test_week2.md).
+
 ## Phân công
 
 | Module | Phạm vi | Hạ tầng do module quản lý |
@@ -372,3 +393,9 @@ Quyết định chung của nhóm (Region, thứ tự deploy, ngưỡng chống 
 
 CloudFront và WAF luôn nằm ở `us-east-1` (N. Virginia) — đó là lý do stack edge deploy riêng ở
 Region đó. Metric của Lambda/DynamoDB thì ở `ap-southeast-2`.
+
+> **Thực tế đã deploy (2026-11-04):** SCP của tổ chức chặn `us-east-1` cho user của nhóm, nên stack
+> `linkpulse-edge` đã deploy ở `ap-southeast-2` cùng Region với backend. Vì `EnableWaf=false` và
+> không dùng domain riêng thì edge không bắt buộc ở `us-east-1`; chỉ khi bật WAF phạm vi
+> `CLOUDFRONT` hoặc dùng certificate ACM riêng thì mới cần quay lại `us-east-1`.
+> Chi tiết: [`docs/security_test_week2.md`](docs/security_test_week2.md) mục 0.
