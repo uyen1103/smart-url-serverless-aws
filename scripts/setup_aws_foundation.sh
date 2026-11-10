@@ -440,7 +440,13 @@ for i in "${!MEMBER_ARR[@]}"; do
     if aws iam get-login-profile --user-name "$user" >/dev/null 2>&1; then
       log "  - $user đã có console access, giữ nguyên"
     else
-      run "aws iam create-login-profile --user-name $user --password '$CONSOLE_PASSWORD'"
+      # Không nội suy mật khẩu vào chuỗi `run` vì `run` dùng `eval`: mật khẩu chứa
+      # ký tự shell (nhất là `'` hoặc `$`) sẽ bị diễn giải sai. Gọi aws trực tiếp.
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "[dry-run] aws iam create-login-profile --user-name $user --password <ẩn>"
+      else
+        aws iam create-login-profile --user-name "$user" --password "$CONSOLE_PASSWORD"
+      fi
       log "  - $user: đã tạo console access (chuyển mật khẩu '$CONSOLE_PASSWORD' cho thành viên, chỉ hiện 1 lần)"
     fi
   fi

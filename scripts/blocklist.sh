@@ -52,21 +52,27 @@ done
 command -v aws >/dev/null || { echo "ERROR: chưa cài AWS CLI"; exit 1; }
 
 # Tên bảng: ưu tiên biến môi trường, sau đó tra output của stack backend.
+# Stack thật của nhóm là `linkpulse-backend`; `smart-url` là tên stack của tuần 1 nên
+# vẫn thử để script chạy được trên cả hai môi trường.
 if [[ -z "$TABLE_BLOCKLIST" || -z "$TABLE_URLS" ]]; then
-  stack="${STACK_NAME:-smart-url}"
-  outputs=$(aws cloudformation describe-stacks --stack-name "$stack" --region "$REGION" --query "Stacks[0].Outputs" --output json 2>/dev/null || echo "[]")
-  [[ -z "$TABLE_BLOCKLIST" ]] && TABLE_BLOCKLIST=$(echo "$outputs" | python -c "import json,sys;print(next((o['OutputValue'] for o in json.load(sys.stdin) if o['OutputKey']=='BlocklistTableName'),''))" 2>/dev/null || echo "")
-  # Bảng urls chưa có output riêng: lấy PhysicalName từ resource của stack.
-  if [[ -z "$TABLE_URLS" ]]; then
-    TABLE_URLS=$(aws cloudformation list-stack-resources --stack-name "$stack" --region "$REGION" \
-      --query "StackResourceSummaries[?LogicalResourceId=='UrlsTable'].PhysicalResourceId" --output text 2>/dev/null || echo "")
-    TABLE_URLS=$(printf '%s' "$TABLE_URLS" | head -1)
-    [[ "$TABLE_URLS" == "None" ]] && TABLE_URLS=""
-  fi
+  for stack in "${STACK_NAME:-}" linkpulse-backend smart-url; do
+    [[ -z "$stack" ]] && continue
+    outputs=$(aws cloudformation describe-stacks --stack-name "$stack" --region "$REGION" --query "Stacks[0].Outputs" --output json 2>/dev/null || echo "[]")
+    [[ "$outputs" == "[]" || -z "$outputs" ]] && continue
+    [[ -z "$TABLE_BLOCKLIST" ]] && TABLE_BLOCKLIST=$(echo "$outputs" | python -c "import json,sys;print(next((o['OutputValue'] for o in json.load(sys.stdin) if o['OutputKey']=='BlocklistTableName'),''))" 2>/dev/null || echo "")
+    # Bảng urls chưa có output riêng: lấy PhysicalName từ resource của stack.
+    if [[ -z "$TABLE_URLS" ]]; then
+      TABLE_URLS=$(aws cloudformation list-stack-resources --stack-name "$stack" --region "$REGION" \
+        --query "StackResourceSummaries[?LogicalResourceId=='UrlsTable'].PhysicalResourceId" --output text 2>/dev/null || echo "")
+      TABLE_URLS=$(printf '%s' "$TABLE_URLS" | head -1)
+      [[ "$TABLE_URLS" == "None" ]] && TABLE_URLS=""
+    fi
+    [[ -n "$TABLE_BLOCKLIST" ]] && break
+  done
 fi
 
-if [[ "$ACTION" != "list" && -z "$TABLE_BLOCKLIST" ]]; then
-  echo "ERROR: chưa biết tên bảng blocklist. Đặt BLOCKLIST_TABLE=... hoặc deploy stack backend trước." >&2
+if [[ -z "$TABLE_BLOCKLIST" ]]; then
+  echo "ERROR: chưa biết tên bảng blocklist. Đặt BLOCKLIST_TABLE=... hoặc STACK_NAME=<tên stack backend>." >&2
   exit 1
 fi
 

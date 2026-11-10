@@ -464,7 +464,15 @@ try {
       if ($loginProbe.ExitCode -eq 0) {
         Log-Info "  - $user đã có console access, giữ nguyên"
       } else {
-        Invoke-Run "aws iam create-login-profile --user-name $user --password '$ConsolePassword'"
+        # Không nội suy mật khẩu vào chuỗi `Invoke-Run` vì hàm đó dùng
+        # `Invoke-Expression`: mật khẩu chứa ký tự đặc biệt của PowerShell
+        # (nhất là `$` hoặc `#`) sẽ bị diễn giải sai. Gọi aws trực tiếp.
+        if ($DryRun) {
+          Write-Host "[dry-run] aws iam create-login-profile --user-name $user --password <ẩn>" -ForegroundColor Gray
+        } else {
+          aws iam create-login-profile --user-name $user --password $ConsolePassword | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Không tạo được console access cho $user." }
+        }
         Log-Info "  - ${user}: đã tạo console access (copy mật khẩu '$ConsolePassword' cho thành viên, chỉ hiện 1 lần)"
       }
     }
