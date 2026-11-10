@@ -64,8 +64,11 @@ if ([string]::IsNullOrWhiteSpace($blocklistTable) -or [string]::IsNullOrWhiteSpa
   }
   if ([string]::IsNullOrWhiteSpace($urlsTable)) {
     $resource = aws cloudformation list-stack-resources --stack-name $stack --region $region `
-      --query "StackResourceSummaries[?LogicalResourceId=='UrlsTable'].PhysicalResourceId[0]" --output text 2>$null
-    if ($LASTEXITCODE -eq 0 -and $resource -and $resource -ne 'None') { $urlsTable = $resource }
+      --query "StackResourceSummaries[?LogicalResourceId=='UrlsTable'].PhysicalResourceId" --output text 2>$null
+    if ($LASTEXITCODE -eq 0 -and $resource) {
+      $first = ($resource -split "`n" | Where-Object { $_.Trim() } | Select-Object -First 1)
+      if ($first -and $first.Trim() -ne 'None') { $urlsTable = $first.Trim() }
+    }
   }
 }
 
@@ -118,7 +121,8 @@ switch ($Action) {
     if ([string]::IsNullOrWhiteSpace($blocklistTable)) {
       throw "Chưa biết tên bảng blocklist. Đặt BLOCKLIST_TABLE=... hoặc deploy stack backend trước."
     }
-    aws dynamodb scan --table-name $blocklistTable --region $region --projection-expression "domain,reason,added_at" --output json
+    aws dynamodb scan --table-name $blocklistTable --region $region `
+      --projection-expression "#d,reason,added_at" --expression-attribute-names '{"#d":"domain"}' --output json
   }
   'activate' {
     if ([string]::IsNullOrWhiteSpace($urlsTable)) {

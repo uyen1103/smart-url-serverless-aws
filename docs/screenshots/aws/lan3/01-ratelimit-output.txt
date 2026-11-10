@@ -1,0 +1,37 @@
+Bắt đầu lúc 2026-11-10T07:49:01Z UTC
+CF_DOMAIN=d3rsimgoxz85kx.cloudfront.net  OWNER=33333333-3333-4333-8333-333333333333
+
+ 1  HTTP 201  Retry-After=<khong co>  {"code": "b5iFeoZ", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/b5iFeoZ", "created": true, "long_url": "https://example.com/rl-test-1", "expires_at": null, "max_clicks": null}
+ 2  HTTP 201  Retry-After=<khong co>  {"code": "IOKcuQG", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/IOKcuQG", "created": true, "long_url": "https://example.com/rl-test-2", "expires_at": null, "max_clicks": null}
+ 3  HTTP 201  Retry-After=<khong co>  {"code": "hYvp04m", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/hYvp04m", "created": true, "long_url": "https://example.com/rl-test-3", "expires_at": null, "max_clicks": null}
+ 4  HTTP 201  Retry-After=<khong co>  {"code": "LWLSjck", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/LWLSjck", "created": true, "long_url": "https://example.com/rl-test-4", "expires_at": null, "max_clicks": null}
+ 5  HTTP 201  Retry-After=<khong co>  {"code": "NcNvOA0", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/NcNvOA0", "created": true, "long_url": "https://example.com/rl-test-5", "expires_at": null, "max_clicks": null}
+ 6  HTTP 201  Retry-After=<khong co>  {"code": "e1BWklO", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/e1BWklO", "created": true, "long_url": "https://example.com/rl-test-6", "expires_at": null, "max_clicks": null}
+ 7  HTTP 201  Retry-After=<khong co>  {"code": "Ql3PE4y", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/Ql3PE4y", "created": true, "long_url": "https://example.com/rl-test-7", "expires_at": null, "max_clicks": null}
+ 8  HTTP 201  Retry-After=<khong co>  {"code": "szpRX3X", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/szpRX3X", "created": true, "long_url": "https://example.com/rl-test-8", "expires_at": null, "max_clicks": null}
+ 9  HTTP 201  Retry-After=<khong co>  {"code": "WXu3s5v", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/WXu3s5v", "created": true, "long_url": "https://example.com/rl-test-9", "expires_at": null, "max_clicks": null}
+10  HTTP 201  Retry-After=<khong co>  {"code": "3gh0X4p", "short_url": "https://d3rsimgoxz85kx.cloudfront.net/3gh0X4p", "created": true, "long_url": "https://example.com/rl-test-10", "expires_at": null, "max_clicks": null}
+11  HTTP 429  Retry-After=41  {"error": {"code": "rate_limited", "message": "Bạn thao tác quá nhanh.", "retry_after": 41}}
+12  HTTP 429  Retry-After=40  {"error": {"code": "rate_limited", "message": "Bạn thao tác quá nhanh.", "retry_after": 40}}
+13  HTTP 429  Retry-After=39  {"error": {"code": "rate_limited", "message": "Bạn thao tác quá nhanh.", "retry_after": 39}}
+14  HTTP 429  Retry-After=39  {"error": {"code": "rate_limited", "message": "Bạn thao tác quá nhanh.", "retry_after": 39}}
+15  HTTP 429  Retry-After=38  {"error": {"code": "rate_limited", "message": "Bạn thao tác quá nhanh.", "retry_after": 38}}
+
+Kết thúc lúc 2026-11-10T07:49:21Z UTC
+
+Xoá 15 link test vừa tạo (chủ sở hữu 33333333-3333-4333-8333-333333333333):
+  DELETE b5iFeoZ -> 204
+  DELETE IOKcuQG -> 204
+  DELETE hYvp04m -> 204
+  DELETE LWLSjck -> 204
+  DELETE NcNvOA0 -> 204
+  DELETE e1BWklO -> 204
+  DELETE Ql3PE4y -> 204
+  DELETE szpRX3X -> 204
+  DELETE WXu3s5v -> 204
+  DELETE 3gh0X4p -> 204
+  DELETE rate_limited -> 404
+  DELETE rate_limited -> 404
+  DELETE rate_limited -> 404
+  DELETE rate_limited -> 404
+  DELETE rate_limited -> 404

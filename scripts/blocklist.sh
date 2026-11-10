@@ -59,7 +59,8 @@ if [[ -z "$TABLE_BLOCKLIST" || -z "$TABLE_URLS" ]]; then
   # Bảng urls chưa có output riêng: lấy PhysicalName từ resource của stack.
   if [[ -z "$TABLE_URLS" ]]; then
     TABLE_URLS=$(aws cloudformation list-stack-resources --stack-name "$stack" --region "$REGION" \
-      --query "StackResourceSummaries[?LogicalResourceId=='UrlsTable'].PhysicalResourceId[0]" --output text 2>/dev/null || echo "")
+      --query "StackResourceSummaries[?LogicalResourceId=='UrlsTable'].PhysicalResourceId" --output text 2>/dev/null || echo "")
+    TABLE_URLS=$(printf '%s' "$TABLE_URLS" | head -1)
     [[ "$TABLE_URLS" == "None" ]] && TABLE_URLS=""
   fi
 fi
@@ -116,7 +117,10 @@ case "$ACTION" in
     echo "Đã gỡ chặn $domain."
     ;;
   list)
-    aws dynamodb scan --table-name "$TABLE_BLOCKLIST" --region "$REGION" --projection-expression "domain,reason,added_at" --output json
+    # "domain" là từ khoá dành riêng của DynamoDB, phải ánh xạ qua ExpressionAttributeNames.
+    aws dynamodb scan --table-name "$TABLE_BLOCKLIST" --region "$REGION" \
+      --projection-expression "#d,reason,added_at" \
+      --expression-attribute-names '{"#d":"domain"}' --output json
     ;;
   activate)
     if [[ -z "$TABLE_URLS" ]]; then

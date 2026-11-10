@@ -3,6 +3,8 @@
 - Môi trường kiểm thử: `https://d3rsimgoxz85kx.cloudfront.net`, ngày 2026-11-05.
 - Ảnh bằng chứng nằm trong `screenshots/e2e/`.
 - Ảnh giao diện không thay thế bằng chứng HTTP.
+- Các dòng kiểm thử lớp chống lạm dụng (TV5) cập nhật ngày 2026-11-10, bằng chứng ở
+  `screenshots/aws/lan3/`, chi tiết lệnh và output ở [`security_test_week2.md`](security_test_week2.md).
 
 ## Giao diện
 
@@ -12,7 +14,7 @@
 | Tạo link | Tạo thành công, trạng thái “Đang hoạt động”; `short_url=https://d3rsimgoxz85kx.cloudfront.net/RBe8QOi` (18:17–18:44). | Đạt | [18-links-active](screenshots/e2e/18-links-active.png) |
 | Trùng URL trên giao diện | Giao diện báo link đã có trong tài khoản. | Đã quan sát trên giao diện | [06-url-duplicate](screenshots/e2e/06-url-duplicate.png) |
 | URL `abc` trên giao diện | Giao diện báo URL không đúng định dạng. | Đã quan sát trên giao diện | [07-url-invalid-abc](screenshots/e2e/07-url-invalid-abc.png) |
-| `https://bad.example/test` trên giao diện | Backend trả `invalid_url` vì DNS không phân giải; ảnh không phải bằng chứng blocklist. | Đã quan sát trên giao diện; blocklist API chưa chạy | [11-blocked-domain-dns-rejected](screenshots/e2e/11-blocked-domain-dns-rejected.png) |
+| `https://bad.example/test` trên giao diện | Backend trả `invalid_url` vì DNS không phân giải; ảnh không phải bằng chứng blocklist. Kiểm thử blocklist thật đã chạy riêng với domain phân giải được `example.org` (xem dòng "Domain trong blocklist" ở mục API). | Đã quan sát trên giao diện | [11-blocked-domain-dns-rejected](screenshots/e2e/11-blocked-domain-dns-rejected.png) |
 | Alias dành riêng, tạo mới và trùng trên giao diện | Giao diện báo `login` dành riêng, tạo được `tv2-test-01` và báo alias đã dùng. | Đã quan sát trên giao diện | [08-alias-reserved-login](screenshots/e2e/08-alias-reserved-login.png), [09-alias-created](screenshots/e2e/09-alias-created.png), [10-alias-taken](screenshots/e2e/10-alias-taken.png) |
 | Mở link và sau khi xóa | Mở `RBe8QOi` 3 lần, Click = 3; sau khi xóa, mở lại chuyển tới `/error.html?type=404` (18:17–18:44). | Đạt theo quan sát trình duyệt | [16-404-after-delete](screenshots/e2e/16-404-after-delete.png) |
 | Mã không tồn tại | Trang `/error.html?type=404` hiện “Không tìm thấy liên kết” cùng nút tạo link và xem link của tôi (18:17–18:44). | Đạt | [17-error-404-page](screenshots/e2e/17-error-404-page.png) |
@@ -34,12 +36,12 @@
 | Trùng URL cùng owner | Gửi lại URL và owner trả HTTP 200, `created=false`, code `LA8fvII` (17:50:01 +07). | Đạt |
 | Alias dành riêng | API trả HTTP 409 cho `login` và `admin` (17:50:02 +07). | Đạt |
 | Tạo alias mới rồi gửi lại | `e2e-10498` được tạo HTTP 201; gửi lại trả HTTP 409, `alias_taken` (17:58 +07; CloudShell). | Đạt |
-| Domain trong blocklist | Chưa chạy — chưa có domain thật trong blocklist; `bad.example` bị backend loại ở bước DNS trước blocklist. | Chưa chạy |
-| Rate limit | Chưa chạy — rate limit không được kiểm tra. | Chưa chạy |
-| Turnstile sai/thiếu | Chưa chạy — backend chưa bật Turnstile. | Chưa chạy |
+| Domain trong blocklist | 2026-11-10: thêm domain thật `example.org` (DNS phân giải được) bằng `scripts/blocklist.sh add ... --execute`; POST `/api/shorten` với URL `https://example.org/tv5-block-test` trả HTTP 400, `error.code = blocked_domain`. Đã gỡ domain sau khi thử, `blocklist.sh list` trả `Count: 0`. Ảnh: [03-blocklist-list](screenshots/aws/lan3/03-blocklist-list.png), [04-blocked-domain-body](screenshots/aws/lan3/04-blocked-domain-body.png), [05-blocklist-empty](screenshots/aws/lan3/05-blocklist-empty.png). | Đạt |
+| Rate limit | 2026-11-10 14:49 +07: 15 POST `/api/shorten` liên tiếp → 10 request đầu `201`, từ request 11 trả `429` kèm header `Retry-After` (41 → 38 giây); bảng `rate_limits` ghi `cnt = 10` cho khóa `shorten#<ip_hash>#<bucket>`. Lớp throttling API Gateway kiểm riêng bằng 120 request song song → 35 lần `429 {"message":"Too Many Requests"}` (không `Retry-After`) và 64 lần `429 {"code":"rate_limited"}` (có `Retry-After`). Ảnh: [01-ratelimit-output](screenshots/aws/lan3/01-ratelimit-output.png), [02-rate-limits-table](screenshots/aws/lan3/02-rate-limits-table.png), [06-apigateway-throttling](screenshots/aws/lan3/06-apigateway-throttling.png). | Đạt |
+| Turnstile sai/thiếu | Không dùng, backend tắt (`TurnstileSecretParam` để trống khi deploy). | Không áp dụng |
 | Hết hạn / max clicks | Chưa mở link lần 3; ảnh chỉ cho thấy trạng thái “Đạt giới hạn” ở 2 click trong danh sách Link của tôi ([ảnh](screenshots/e2e/20-links-multiple-states.png)); hết hạn chưa kiểm tra. | Đã quan sát trên giao diện; hết hạn chưa chạy |
 | Lỗi 5xx | Chưa chạy — không gây lỗi cố ý trên môi trường dùng chung. | Chưa chạy |
-| Phản hồi 403 HTML | 2026-11-09 20:41, localhost:8000, mock `waf_html`: giao diện hiện “Chưa thể tạo liên kết. Máy chủ trả về nội dung không hợp lệ. Vui lòng thử lại sau.” kèm nút “Thử lại”; trang không vỡ, không lộ chữ thô ([ảnh](screenshots/e2e/21-waf-html-mock.png)). WAF thật chưa kiểm tra. | Đạt phần giao diện (mock) |
+| Phản hồi 403 HTML | Chưa chạy — WAF thật không bật (giữ `EnableWaf=false` để chi phí $0; `infra/edge.yaml` bọc Web ACL trong `Condition`). Lớp biên đã kiểm thật là `X-Origin-Verify`: gọi thẳng API Gateway trả `403` (`reason: origin_not_allowed`), qua CloudFront trả `200` ([ảnh](screenshots/aws/lan2/smoke-direct-403.png)). Phần giao diện với mock `waf_html` vẫn giữ kết quả trước ([ảnh](screenshots/e2e/21-waf-html-mock.png)). | Chưa chạy (WAF) |
 
 ## Quan sát chưa chặn merge
 
