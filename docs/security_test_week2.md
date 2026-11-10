@@ -510,6 +510,14 @@ HTTP 400
 → Đúng `400` với `error.code = blocked_domain`. ✔
 Domain đã được **gỡ khỏi** blocklist sau khi thử; bảng về lại rỗng.
 
+> **Sửa lỗi script sau khi kiểm thử (2026-11-10):** lần chạy đầu tiên trên Windows, cả
+> `blocklist.sh` lẫn `blocklist.ps1` **không tìm được tên bảng** vì mặc định tra stack
+> `smart-url` (stack của tuần 1) trong khi stack thật là `linkpulse-backend`. Bản PowerShell
+> còn hỏng thêm ở chỗ PowerShell 5.1 bỏ dấu nháy của native command, khiến các tham số
+> JSON của DynamoDB (`--item`, `--key`, `--expression-attribute-names`) không parse được.
+> Đã sửa cả hai bản và kiểm thử lại vòng add → list → remove; cả hai đều trả `Count: 0`
+> sau khi gỡ. Xem mục 9.
+
 Ảnh bằng chứng:
 [03-blocklist-list](screenshots/aws/lan3/03-blocklist-list.png) ·
 [04-blocked-domain-body](screenshots/aws/lan3/04-blocked-domain-body.png) ·
@@ -565,7 +573,7 @@ Cost Explorer API ở mục 7.1 (cùng một nguồn dữ liệu).
 [07-billing-cost-zero](screenshots/aws/lan3/07-billing-cost-zero.png) (API) ·
 [09-cost-explorer-console](screenshots/aws/lan3/09-cost-explorer-console.png) (AWS Console)
 
-### Kiểm `architecture.png` đã có ghi chú `verdict_cache` chưa
+### 7.3. Kiểm `architecture.png` đã có ghi chú `verdict_cache` chưa
 
 ☑ **Đã có.** `docs/architecture.png` sinh bằng `python scripts/gen_arch_png.py` (commit `456f035`)
 ghi rõ trong khối DynamoDB:
@@ -607,6 +615,13 @@ bảng `rate_limits` (mục 3) và bảng `urls` (link `suspicious`, mục 5).
 | [`scripts/blocklist.sh`](../scripts/blocklist.sh) / [`.ps1`](../scripts/blocklist.ps1) | Thêm/xoá domain trong bảng blocklist, gỡ cờ link về `active` |
 | [`scripts/dyn_urls.sh`](../scripts/dyn_urls.sh) | Truy vấn nhanh bảng `urls` |
 | [`scripts/render_evidence.py`](../scripts/render_evidence.py) | Dựng ảnh PNG từ output kiểm thử để dán vào tài liệu |
+
+> **Lưu ý khi chạy lại (đã sửa ngày 2026-11-10):** `blocklist.sh` / `blocklist.ps1` giờ tự dò
+> tên bảng qua các stack `linkpulse-backend` (stack thật) rồi `smart-url` (stack tuần 1), nên
+> không cần đặt `STACK_NAME` khi chạy trên môi trường hiện tại. Bản `.ps1` đã sửa lỗi PowerShell
+> 5.1 làm mất dấu nháy của tham số JSON DynamoDB, và cả hai bản đều **báo lỗi khi lệnh `aws`
+> thất bại** thay vì in "đã xong" sai. Script `setup_aws_foundation.*` cũng không còn nội suy mật
+> khẩu console vào chuỗi lệnh (bị `Invoke-Expression`/`eval` diễn giải sai với ký tự đặc biệt).
 
 Trên Windows, chạy script Python với `PYTHONUTF8=1` và `PYTHONIOENCODING=utf-8` để không lỗi
 `UnicodeEncodeError` khi in tiếng Việt.
