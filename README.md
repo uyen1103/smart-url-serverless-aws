@@ -195,6 +195,28 @@ Trên Windows:
 
 Xem trước thay đổi mà không thực thi: thêm `--dry-run` (bash) hoặc `-DryRun` (PowerShell).
 
+**Cấp console access (tuỳ chọn):** user IAM tạo bằng script mặc định **không** đăng nhập được AWS
+Console (chỉ dùng Access Key qua CLI). Muốn thành viên vào console thì thêm tuỳ chọn console access:
+
+```bash
+./scripts/setup_aws_foundation.sh \
+  --member tv5=liamnguyen.piupear206@gmail.com \
+  --console-password "LinkPulse-TV5-2026!x"
+```
+
+```powershell
+.\scripts\setup_aws_foundation.ps1 `
+  -Member @("tv5=liamnguyen.piupear206@gmail.com") `
+  -ConsolePassword "LinkPulse-TV5-2026!x"
+```
+
+Mật khẩu phải khớp password policy của tài khoản: **≥ 14 ký tự, có chữ hoa + chữ thường + số + ký hiệu**.
+Lệnh này tạo `LoginProfile` (chỉ hiện mật khẩu 1 lần) và **bỏ qua** user đã có console access.
+Đăng nhập console bằng: Account `567627324019` → chọn **IAM user** → username `linkpulse-tv5` → mật khẩu đã cấp.
+
+> ⚠️ Root user của tài khoản đã đăng nhập được console; user `linkpulse-tv5` thì chưa (thiếu `LoginProfile`).
+> Không dùng root cho việc thường — root bắt buộc MFA và không thuộc phạm vi phân quyền của nhóm.
+
 Bảng ánh xạ:
 
 | Thành viên | Module | Email | IAM user | Vai trò |
@@ -240,6 +262,12 @@ Gửi cho mỗi người một tin nhắn, mẫu:
 > 4. Kiểm tra email budget đã về hộp thư của bạn chưa (kiểm tra cả Spam)
 
 Mỗi người tự bật MFA và tự tạo key của mình — không chia sẻ key.
+
+Nếu admin đã chạy script với `--console-password`, thêm dòng này vào tin nhắn để thành viên đăng nhập
+console (ngoài MFA + access key ở trên):
+
+> 5. Đăng nhập AWS Console: Account `567627324019` → chọn **IAM user** → username `linkpulse-tv<N>` →
+>    mật khẩu đã cấp. Bắt buộc nhập mã MFA từ app Authenticator.
 
 ### Bước 1 — Deploy backend (lần 1)
 

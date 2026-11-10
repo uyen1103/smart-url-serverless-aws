@@ -14,6 +14,12 @@
   .\scripts\setup_aws_foundation.ps1 `
       -Member @("tv1=kinkit784@gmail.com", "tv2=nguyenuyen2017tn@gmail.com", "tv3=lamvanhau202101@gmail.com", "tv4=yendoan20062020@gmail.com", "tv5=liemnt0773@ut.edu.vn") `
       -Region ap-southeast-2 -Budget 5
+.EXAMPLE
+  # Cấp cả console access cho từng người (cần root/IAM admin).
+  # Mật khẩu phải khớp password policy: >= 14 ký tự, hoa + thường + số + ký hiệu.
+  .\scripts\setup_aws_foundation.ps1 `
+      -Member @("tv5=liamnguyen.piupear206@gmail.com") `
+      -ConsolePassword "LinkPulse-TV5-2026!x"
 #>
 [CmdletBinding()]
 param(
@@ -24,6 +30,7 @@ param(
   [string]$Region = "ap-southeast-2",
   [string]$EdgeRegion = "us-east-1",
   [int]$Budget = 5,
+  [string]$ConsolePassword = "",
   [switch]$DryRun
 )
 
@@ -395,6 +402,18 @@ try {
 
     Invoke-Run "aws iam add-user-to-group --user-name $user --group-name $group"
     Invoke-Run "aws iam attach-user-policy --user-name $user --policy-arn $mfaArn"
+
+    # Console access (tuỳ chọn): tạo LoginProfile để thành viên đăng nhập AWS Console.
+    # Mật khẩu phải khớp password policy của tài khoản: >= 14 ký tự, hoa + thường + số + ký hiệu.
+    if ($ConsolePassword) {
+      $null = aws iam get-login-profile --user-name $user 2>$null
+      if ($LASTEXITCODE -eq 0) {
+        Log-Info "  - $user đã có console access, giữ nguyên"
+      } else {
+        Invoke-Run "aws iam create-login-profile --user-name $user --password '$ConsolePassword'"
+        Log-Info "  - ${user}: đã tạo console access (copy mật khẩu '$ConsolePassword' cho thành viên, chỉ hiện 1 lần)"
+      }
+    }
 
     switch ($role) {
       'deployer' {
