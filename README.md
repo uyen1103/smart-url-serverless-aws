@@ -217,6 +217,12 @@ Lệnh này tạo `LoginProfile` (chỉ hiện mật khẩu 1 lần) và **bỏ 
 > ⚠️ Root user của tài khoản đã đăng nhập được console; user `linkpulse-tv5` thì chưa (thiếu `LoginProfile`).
 > Không dùng root cho việc thường — root bắt buộc MFA và không thuộc phạm vi phân quyền của nhóm.
 
+> ℹ️ **Script cần quyền IAM admin.** Cả hai bản đều có bước preflight: nếu user đang chạy không có
+> `iam:*` / `budgets:*`, script **dừng ngay** với thông báo rõ ràng (thay vì lỗi `AccessDenied`
+> xen giữa quá trình) và liệt kê đúng các action cần cấp. Chạy script bằng **root user** hoặc
+> IAM admin của tài khoản `567627324019`.
+> Bằng chứng chạy thật: [`docs/security_test_week2.md`](docs/security_test_week2.md) mục 0.4.
+
 Bảng ánh xạ:
 
 | Thành viên | Module | Email | IAM user | Vai trò |

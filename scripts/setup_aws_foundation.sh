@@ -132,6 +132,25 @@ command -v aws >/dev/null || { echo "ERROR: chưa cài AWS CLI"; exit 1; }
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 log "Account: $ACCOUNT_ID | Region workload: $REGION | Region edge: $EDGE_REGION | Budget: \$$BUDGET_LIMIT/mo"
 
+# Preflight: script cần iam:* (tạo group/user/policy) và budgets:* (tạo budget).
+# Nếu tài khoản không có quyền thì dừng ngay với thông báo rõ ràng, thay vì để lỗi
+# AccessDenied xen giữa quá trình.
+IAM_PROBE_ERR="$(aws iam get-group --group-name linkpulse-devs 2>&1 >/dev/null || true)"
+if grep -qE "AccessDenied|not authorized" <<<"$IAM_PROBE_ERR" && ! grep -qE "NoSuchEntity|does not exist" <<<"$IAM_PROBE_ERR"; then
+  echo ""
+  echo "!! KHÔNG ĐỦ QUYỀN — script cần quyền IAM admin (iam:*) và budgets:*." >&2
+  echo "   Caller hiện tại: $(aws sts get-caller-identity --query Arn --output text)" >&2
+  echo "   Lỗi: $IAM_PROBE_ERR" >&2
+  echo ""
+  echo "   Cách xử lý:" >&2
+  echo "   1) Chạy script này bằng root user hoặc IAM admin của tài khoản 567627324019." >&2
+  echo "   2) Hoặc admin gán cho user hiện tại: iam:CreateUser, iam:CreateGroup, iam:CreatePolicy," >&2
+  echo "      iam:AttachUserPolicy, iam:AttachGroupPolicy, iam:PutUserPolicy, iam:CreateLoginProfile," >&2
+  echo "      iam:UpdateAccountPasswordPolicy, budgets:CreateBudget, budgets:UpdateBudget." >&2
+  echo ""
+  exit 1
+fi
+
 # Tên stack của nhóm: TV1 dùng smart-url cho stack backend, các stack khác dùng linkpulse-*.
 
 # ---------------------------------------------------------------------------
