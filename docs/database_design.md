@@ -1,119 +1,227 @@
 # DATABASE DESIGN
 
-## 1. Mục tiêu
+## 1. Tổng quan
 
-Thiết kế các bảng DynamoDB cho dịch vụ rút gọn URL, lưu lịch sử click, tổng hợp thống kê, giới hạn request và quản lý domain bị chặn. Các bảng sử dụng chế độ tính phí `PAY_PER_REQUEST` trong script tạo bảng hiện tại.
+LinkPulse sử dụng Amazon DynamoDB làm cơ sở dữ liệu NoSQL để lưu trữ URL rút gọn, dữ liệu lượt truy cập, thống kê lưu lượng, giới hạn tần suất truy cập và danh sách domain bị chặn.
 
-## 2. Thiết kế bảng `urls`
+Hệ thống gồm 5 bảng:
 
-Bảng `urls` lưu thông tin các đường dẫn rút gọn.
+1. `urls`
+2. `clicks`
+3. `stats`
+4. `rate_limits`
+5. `blocklist`
 
-| Thuộc tính | Vai trò | Mô tả |
+Các bảng được tạo và cấu hình thông qua AWS CloudFormation trong `backend/template.yaml`.
+
+## 2. Thiết kế các bảng
+
+### 2.1. Bảng `urls`
+
+**Mục đích:** Lưu thông tin URL gốc và URL rút gọn.
+
+| Thuộc tính | Mô tả |
+|---|---|
+| `short_code` (PK) | Mã URL rút gọn |
+| `long_url` | URL gốc |
+| `created_at` | Thời điểm tạo |
+| `expires_at` | Thời điểm hết hạn, lưu dưới dạng chuỗi ISO 8601 |
+| `owner_id` | Chủ sở hữu URL |
+| `status` | Trạng thái URL |
+| `max_clicks` | Giới hạn lượt truy cập |
+| `click_count` | Số lượt truy cập |
+| Các thuộc tính khác | Theo dữ liệu nghiệp vụ của URL |
+
+**Lưu ý:** Thuộc tính `expires_at` của bảng `urls` được lưu dưới dạng chuỗi ISO 8601 để phục vụ kiểm tra thời hạn URL trong ứng dụng. Bảng `urls` không bật DynamoDB TTL.
+
+**Global Secondary Index: `owner-index`**
+
+- Partition key: `owner_id`.
+- Sort key: `created_at`.
+- Projection: `ALL`.
+
+Index hỗ trợ truy vấn danh sách URL theo chủ sở hữu và sắp xếp theo thời gian tạo.
+
+### 2.2. Bảng `clicks`
+
+**Mục đích:** Lưu lịch sử từng lượt truy cập URL. Bảng này đồng thời kích hoạt DynamoDB Streams để xử lý thống kê gần thời gian thực.
+
+| Thuộc tính | Mô tả |
+|---|---|
+| `short_code` (PK) | Mã URL được truy cập |
+| `sk` (SK) | Khóa sắp xếp của sự kiện click |
+| `timestamp` | Thời điểm truy cập |
+| `ip_hash` | IP đã được băm bằng HMAC-SHA256 |
+| `country` | Quốc gia |
+| `device` | Thiết bị |
+| `browser` | Trình duyệt |
+| `referrer` | Nguồn giới thiệu |
+| `result` | Kết quả xử lý lượt truy cập |
+| `expires_at` | Thời điểm dữ liệu hết hạn |
+
+**Cấu hình:**
+
+- DynamoDB Streams: `NEW_IMAGE`.
+- TTL: bật trên thuộc tính `expires_at`.
+- Thời gian lưu dữ liệu theo cấu hình hiện tại: 30 ngày.
+
+IP thật không được lưu trực tiếp; hệ thống sử dụng `ip_hash` để hỗ trợ ước tính số người truy cập duy nhất.
+
+### 2.3. Bảng `stats`
+
+**Mục đích:** Lưu dữ liệu thống kê đã tổng hợp từ các sự kiện click.
+
+| Thuộc tính | Mô tả |
+|---|---|
+| `scope` (PK) | Phạm vi thống kê |
+| `sk` (SK) | Khóa xác định nhóm dữ liệu |
+| `clicks` | Tổng lượt click |
+| `bot_clicks` | Số lượt click từ bot |
+| `c:<country>` | Bộ đếm theo quốc gia |
+| `d:<device>` | Bộ đếm theo thiết bị |
+| `b:<browser>` | Bộ đếm theo trình duyệt |
+| `r:<referrer>` | Bộ đếm theo nguồn giới thiệu |
+| `l:<code>` | Bộ đếm theo mã URL, chỉ áp dụng cho scope GLOBAL |
+| `ips` | Tập hợp các `ip_hash` |
+| `items` | Danh sách các lượt click gần đây phục vụ dashboard |
+| `expires_at` | Thời điểm dữ liệu hết hạn |
+
+**Quy ước dữ liệu:**
+
+- `scope = GLOBAL`: thống kê toàn hệ thống.
+- `scope = LINK#<code>`: thống kê cho một URL cụ thể.
+- `sk = M#<minute>`: dữ liệu tổng hợp theo từng phút.
+- `scope = META`, `sk = recent_clicks`: lưu danh sách các lượt click gần đây.
+- `scope = META`, `sk = flagged_links`: lưu số lượng URL bị gắn cờ.
+
+Các bộ đếm được cập nhật bằng thao tác `ADD` nguyên tử của DynamoDB.
+
+**Cấu hình:**
+
+- TTL: bật trên thuộc tính `expires_at`.
+- Thời gian lưu dữ liệu theo cấu hình hiện tại: 8 ngày.
+
+### 2.4. Bảng `rate_limits`
+
+**Mục đích:** Giới hạn số request trong một cửa sổ thời gian cố định.
+
+| Thuộc tính | Mô tả |
+|---|---|
+| `pk` (PK) | Khóa định danh gồm key và bucket thời gian |
+| `cnt` | Số request trong bucket |
+| `expires_at` | Thời điểm dữ liệu hết hạn |
+
+**Cơ chế hoạt động:**
+
+- Xác định bucket bằng cách chia timestamp hiện tại cho thời lượng cửa sổ.
+- Khóa được tạo theo dạng `key#bucket`.
+- Sử dụng `UpdateItem` với `ADD cnt` và `ConditionExpression` để cập nhật bộ đếm nguyên tử.
+- Khi số request vượt giới hạn, hệ thống trả về HTTP 429.
+- Khi DynamoDB bị throttle, cơ chế rate limit này hoạt động theo hướng fail-open để tránh làm hỏng request; AWS WAF và API Gateway throttling vẫn là các lớp bảo vệ bổ sung.
+
+**Cấu hình:**
+
+- TTL: bật trên thuộc tính `expires_at`.
+- Thời điểm hết hạn được tính bằng `(bucket + 2) * window`, tức là sau khi bucket hiện tại kết thúc thêm một cửa sổ thời gian.
+
+### 2.5. Bảng `blocklist`
+
+**Mục đích:** Lưu danh sách domain bị chặn để kiểm tra URL trước khi tạo hoặc xử lý liên kết.
+
+| Thuộc tính | Mô tả |
+|---|---|
+| `domain` (PK) | Tên domain |
+| `reason` | Lý do bị chặn |
+| `created_at` | Thời điểm thêm vào danh sách |
+
+## 3. Cấu hình DynamoDB
+
+### 3.1. Billing Mode
+
+CloudFormation hỗ trợ hai chế độ:
+
+- `PROVISIONED`: cấp phát trước năng lực đọc và ghi.
+- `PAY_PER_REQUEST`: thanh toán theo số request thực tế.
+
+Giá trị mặc định của tham số `BillingMode` là `PROVISIONED`.
+
+### 3.2. Provisioned Capacity
+
+Cấu hình năng lực đọc và ghi trong `backend/template.yaml`:
+
+| Bảng / Index | Read Capacity (RCU) | Write Capacity (WCU) |
+|---|---:|---:|
+| `urls` | 6 | 5 |
+| `owner-index` | 2 | 4 |
+| `clicks` | 1 | 4 |
+| `stats` | 10 | 4 |
+| `rate_limits` | 1 | 5 |
+| `blocklist` | 3 | 1 |
+| **Tổng cộng** | **23** | **23** |
+
+Các giá trị trên là cấu hình Provisioned Capacity trong template, không phải số liệu sử dụng thực tế.
+
+### 3.2.1. Capacity và chi phí tham chiếu
+
+Tổng Provisioned Capacity của hệ thống:
+
+- Read Capacity: 23 RCU.
+- Write Capacity: 23 WCU.
+
+Theo mức Free Tier DynamoDB được sử dụng làm giả định đối chiếu trong thiết kế (25 RCU và 25 WCU):
+
+| Chỉ số | Hệ thống | Mức tham chiếu | Còn lại |
+|---|---:|---:|---:|
+| Read Capacity | 23 RCU | 25 RCU | 2 RCU |
+| Write Capacity | 23 WCU | 25 WCU | 2 WCU |
+
+Như vậy, cấu hình hiện tại nằm trong mức capacity tham chiếu 25 RCU và 25 WCU.
+
+**Lưu ý:** Đây là phép đối chiếu capacity, không phải cam kết toàn bộ chi phí AWS bằng 0. Chi phí thực tế còn phụ thuộc vào điều kiện Free Tier, thời hạn ưu đãi, Region, lưu trữ, Streams, backup và các dịch vụ AWS khác.
+
+### 3.3. Time to Live (TTL)
+
+TTL được bật trên các bảng:
+
+| Bảng | Thuộc tính TTL | Thời gian lưu theo cấu hình |
 |---|---|---|
-| `short_code` (PK) | Partition key | Mã rút gọn duy nhất của URL |
-| `long_url` | Attribute | Đường dẫn gốc |
-| `created_at` | Attribute | Thời điểm tạo URL, nên dùng ISO 8601 UTC |
-| `expires_at` | Attribute | Thời điểm URL hết hạn nếu hệ thống hỗ trợ thời hạn |
-| `owner` | Attribute | Chủ sở hữu URL |
-| `status` | Attribute | Trạng thái URL, ví dụ `active` hoặc `blocked` |
-| `max_clicks` | Attribute | Số lượt click tối đa nếu có giới hạn |
-| `click_count` | Attribute | Số lượt click hiện tại |
+| `clicks` | `expires_at` | 30 ngày |
+| `stats` | `expires_at` | 8 ngày |
+| `rate_limits` | `expires_at` | Theo bucket thời gian |
 
-**Access patterns:**
-- Lấy URL theo mã rút gọn: `GetItem` bằng `short_code`.
-- Kiểm tra mã đã tồn tại khi tạo mới: `PutItem` với điều kiện `attribute_not_exists(short_code)`.
-- Liệt kê URL theo chủ sở hữu: cần GSI đề xuất `owner-index` với partition key `owner` và sort key `created_at`. GSI này chưa được tạo trong script hiện tại.
+DynamoDB sử dụng thuộc tính `expires_at` để xác định các item hết hạn và xóa chúng tự động. Việc xóa không nhất thiết diễn ra ngay tại thời điểm hết hạn.
 
-## 3. Thiết kế bảng `clicks`
+### 3.4. DynamoDB Streams
 
-Bảng `clicks` lưu các sự kiện click của từng URL.
+Bảng `clicks` bật DynamoDB Streams với chế độ `NEW_IMAGE`.
 
-| Thuộc tính | Vai trò | Mô tả |
-|---|---|---|
-| `short_code` (PK) | Partition key | Mã rút gọn được click |
-| `click_key` (SK) | Sort key | Chuỗi kết hợp thời gian và ID duy nhất của click, ví dụ `2026-10-28T06:00:00Z#001` |
-| `ip_hash` | Attribute | Mã băm IP; không lưu IP gốc |
-| `country` | Attribute | Mã quốc gia ISO alpha-2, ví dụ `VN`; dùng `XX` nếu không xác định |
-| `device` | Attribute | Nhóm thiết bị, ví dụ `desktop`, `mobile`, `tablet`, `bot`, `other` |
-| `browser` | Attribute tùy chọn theo event schema | Tên trình duyệt suy ra từ User-Agent |
-| `referrer` | Attribute | Nguồn giới thiệu hoặc `direct` |
-| `user_agent` | Attribute tùy chọn theo event schema | User-Agent, tối đa 512 ký tự theo `click_event_schema.json` |
-| `expires_at` | TTL attribute | Unix timestamp tính bằng giây, dùng làm thời điểm hết hạn |
+Luồng xử lý:
 
-`click_event_schema.json` mô tả sự kiện đầu vào gồm 8 trường bắt buộc: `short_code`, `timestamp`, `ip_hash`, `country`, `device`, `browser`, `referrer`, `user_agent`. Khi lưu vào DynamoDB, `timestamp` được ghép cùng ID để tạo giá trị `click_key`; vì vậy cần bảo đảm pipeline xử lý sự kiện thực hiện ánh xạ này.
+1. Người dùng truy cập URL rút gọn.
+2. Hệ thống ghi sự kiện vào bảng `clicks`.
+3. DynamoDB Streams phát sinh sự kiện.
+4. Lambda `process_clicks` nhận sự kiện.
+5. Lambda tổng hợp dữ liệu và cập nhật bảng `stats`.
 
-**Access patterns:**
-- Lấy lịch sử click của một URL: `Query` với `short_code` và tùy chọn điều kiện trên `click_key` để giới hạn khoảng thời gian.
-- Dữ liệu click được dự kiến lưu tối đa 30 ngày. TTL được bật trên bảng `clicks` với thuộc tính `expires_at`; thuộc tính này phải là kiểu Number chứa Unix timestamp tính bằng giây.
+### 3.5. Point-in-Time Recovery (PITR)
 
-**Lưu ý triển khai:** script `database/scripts/create_tables.sh` hiện tạo khóa `click_key`, nhưng chưa tự bật TTL. TTL đã được bật thủ công trên môi trường DynamoDB Local trong quá trình kiểm thử. Cơ chế xóa TTL có thể không diễn ra ngay lập tức; việc bản ghi hết hạn còn đọc được không nhất thiết có nghĩa cấu hình TTL sai.
+PITR được điều khiển thông qua tham số `EnablePitr`, mặc định là `false`.
 
-## 4. Thiết kế bảng `stats_agg`
+Cấu hình PITR áp dụng cho bảng `urls` theo điều kiện trong CloudFormation template.
 
-Bảng `stats_agg` lưu số liệu click đã tổng hợp theo từng URL và khoảng thời gian.
+## 4. Nhận xét thiết kế
 
-| Thuộc tính | Vai trò | Mô tả |
-|---|---|---|
-| `short_code` (PK) | Partition key | Mã rút gọn |
-| `time_bucket` (SK) | Sort key | Mốc thời gian thống kê theo phút hoặc giờ |
-| `click_count` | Attribute | Tổng số click trong khoảng thời gian |
-| `updated_at` | Attribute | Thời điểm cập nhật số liệu |
+- Sử dụng khóa chính phù hợp với các access pattern của từng bảng.
+- GSI `owner-index` hỗ trợ truy vấn URL theo chủ sở hữu.
+- DynamoDB Streams kết hợp Lambda giúp cập nhật thống kê gần thời gian thực.
+- TTL giúp tự động dọn dẹp dữ liệu click, thống kê và rate limit hết hạn.
+- Cập nhật bộ đếm bằng `ADD` nguyên tử giúp tránh thao tác đọc rồi ghi lại thủ công.
+- IP được băm trước khi lưu nhằm hạn chế lưu trữ thông tin IP thật.
+- PITR của bảng `urls` được điều khiển bằng tham số `EnablePitr` và mặc định tắt.
+- WAF tùy chọn, mặc định tắt.
 
-**Access pattern:** lấy số liệu thống kê của một URL bằng `Query` trên `short_code`, có thể lọc theo khoảng `time_bucket`.
+## 5. Giới hạn đã biết
 
-**Top link:** schema hiện tại chưa hỗ trợ trực tiếp việc xếp hạng tất cả URL theo tổng số click. Cần thống nhất thiết kế bổ sung (ví dụ một bảng tổng hợp theo phạm vi thời gian hoặc một index phù hợp) trước khi coi access pattern Top link là đã triển khai. Không nên xem GSI Top link là đã tồn tại khi chưa được định nghĩa và tạo trong script.
-
-## 5. Thiết kế bảng `rate_limits`
-
-Bảng `rate_limits` lưu bộ đếm request theo IP để hỗ trợ giới hạn tốc độ truy cập.
-
-| Thuộc tính | Vai trò | Mô tả |
-|---|---|---|
-| `ip` (PK) | Partition key | Định danh nguồn request; nên cân nhắc dùng giá trị đã băm nếu không cần lưu IP gốc |
-| `request_count` | Attribute | Số request trong cửa sổ hiện tại |
-| `window_start` | Attribute | Thời điểm bắt đầu cửa sổ đếm |
-| `expires_at` | TTL attribute dự kiến | Unix timestamp tính bằng giây để dữ liệu giới hạn request hết hạn |
-
-TTL được dự kiến dùng cho dữ liệu ngắn hạn. Trong script hiện tại, bảng `rate_limits` chưa được bật TTL tự động; cần thêm cấu hình TTL nếu đây là yêu cầu triển khai.
-
-## 6. Thiết kế bảng `blocklist`
-
-Bảng `blocklist` lưu danh sách domain bị chặn.
-
-| Thuộc tính | Vai trò | Mô tả |
-|---|---|---|
-| `domain` (PK) | Partition key | Tên miền cần kiểm tra |
-| `reason` | Attribute | Lý do chặn domain |
-| `created_at` | Attribute | Thời điểm thêm domain vào danh sách |
-
-**Access pattern:** kiểm tra domain có bị chặn không bằng `GetItem` theo `domain`.
-
-## 7. Ánh xạ access pattern sang bảng và thao tác
-
-| Access pattern | Bảng / index | Thao tác | Trạng thái |
-|---|---|---|---|
-| Lấy URL theo mã rút gọn khi redirect | `urls`, PK `short_code` | `GetItem` | Đã kiểm thử trên DynamoDB Local |
-| Kiểm tra mã rút gọn trùng | `urls`, PK `short_code` | `PutItem` với `attribute_not_exists(short_code)` | Đã kiểm thử trên DynamoDB Local |
-| Đếm hoặc truy vấn click theo URL và thời gian | `clicks`, PK `short_code`, SK `click_key`; hoặc `stats_agg` | `Query` | Đã kiểm thử `Query` trên `clicks`; chưa kiểm thử pipeline tổng hợp |
-| Xem thống kê theo URL và khoảng thời gian | `stats_agg`, PK `short_code`, SK `time_bucket` | `Query` | Schema đã thiết kế; cần kiểm thử riêng |
-| Xếp hạng Top link | Chưa chốt bảng/index tổng hợp | Cần thiết kế | Chưa hoàn thiện |
-| Liệt kê URL theo chủ sở hữu | GSI đề xuất `owner-index` trên `urls` | `Query` | Chưa tạo GSI trong script hiện tại |
-| Kiểm tra domain trong blocklist | `blocklist`, PK `domain` | `GetItem` | Schema đã tạo; cần kiểm thử riêng |
-| Đếm request theo IP | `rate_limits`, PK `ip` | `GetItem` / `UpdateItem` | Schema đã tạo; cần kiểm thử riêng |
-
-## 8. TTL và DynamoDB Streams
-
-### TTL
-
-- `clicks`: TTL attribute `expires_at`, dự kiến lưu click tối đa 30 ngày.
-- `rate_limits`: TTL attribute `expires_at`, dự kiến dùng thời hạn ngắn.
-- Giá trị TTL phải là Number chứa Unix timestamp tính bằng giây.
-- Trạng thái TTL được xác nhận bằng `describe-time-to-live`. Việc bật TTL không bảo đảm bản ghi bị xóa ngay tại thời điểm hết hạn.
-
-### DynamoDB Streams
-
-Luồng xử lý analytics có thể sử dụng DynamoDB Streams trên bảng `clicks` để kích hoạt Lambda xử lý click và cập nhật `stats_agg`. Đây là phương án kiến trúc đề xuất; script tạo bảng hiện tại chưa bật Streams và chưa triển khai Lambda xử lý sự kiện. Nếu triển khai, cần xử lý idempotency vì sự kiện có thể được xử lý lại.
-
-## 9. Trạng thái triển khai hiện tại
-
-Script `database/scripts/create_tables.sh` hiện tạo 5 bảng `urls`, `clicks`, `stats_agg`, `rate_limits`, `blocklist` với chế độ `PAY_PER_REQUEST`. Các khóa chính và khóa sắp xếp được khai báo trong script. GSI `owner-index`, cấu hình TTL tự động trong script, DynamoDB Streams và pipeline tổng hợp chưa được script hiện tại tạo hoặc cấu hình.
+- DynamoDB Streams có cơ chế xử lý at-least-once, do đó khi sự kiện được retry, số liệu tổng hợp có thể bị đếm dư.
+- Một item DynamoDB không được vượt quá 400 KB. Tập `ips` hoặc các bộ đếm referrer có thể tăng kích thước lớn khi lưu lượng cao.
+- Khi hệ thống đạt lưu lượng rất lớn, có thể cân nhắc HyperLogLog hoặc Kinesis kết hợp Flink để xử lý thống kê ở quy mô cao hơn.
