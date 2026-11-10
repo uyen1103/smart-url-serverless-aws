@@ -597,7 +597,7 @@ Kiểm tra: `docs/architecture.png` và `docs/architecture.md` đều đã đồ
 | 3 | Rate limit theo IP | 15 × POST `/api/shorten` | 10 thành công rồi `429` + `Retry-After` | ☑ 10× `201`, 5× `429` + `Retry-After` (41→38) | [01](screenshots/aws/lan3/01-ratelimit-output.png), [02](screenshots/aws/lan3/02-rate-limits-table.png) |
 | 4 | Chặn gọi thẳng origin | GET API domain không có header | `403` | ☑ `403` (`reason: origin_not_allowed`) | [smoke-direct-403](screenshots/aws/lan2/smoke-direct-403.png) |
 | 5 | Gắn cờ suspicious | `get-item` bảng `urls` | `status = suspicious` | ☑ `suspicious` / `bot_traffic` (link `0R4b1nm` của TV4, giữ nguyên) | [08](screenshots/aws/lan3/08-suspicious-flagged-link.png), PR #31 |
-| 6 | Blocklist domain | POST URL domain bị chặn | `400 blocked_domain` | ☑ `400` `blocked_domain` với domain thật `example.org`, đã gỡ sau khi thử | [03](screenshots/aws/lan3/03-blocklist-list.png), [04](screenshots/aws/lan3/04-blocked-domain-body.png) |
+| 6 | Blocklist domain | POST URL domain bị chặn | `400 blocked_domain` | ☑ `400` `blocked_domain` với domain thật `example.org`, đã gỡ sau khi thử; script quản lý blocklist đã sửa lỗi tìm tên bảng và lỗi truyền tham số JSON trên Windows | [03](screenshots/aws/lan3/03-blocklist-list.png), [04](screenshots/aws/lan3/04-blocked-domain-body.png) |
 | 7 | Chi phí $0 | Cost Explorer | `$0` | ☑ API cho mọi dịch vụ `0 USD` **và** trang Cost Explorer trên Console cho `Total cost -$0.00` (13 dịch vụ) | [07](screenshots/aws/lan3/07-billing-cost-zero.png), [09](screenshots/aws/lan3/09-cost-explorer-console.png) |
 
 Ảnh chụp AWS Console cần chụp cho: WAF `BlockedRequests` theo rule (mục 1 — **chưa chạy**),
