@@ -55,8 +55,8 @@ Chi tiết từng lần deploy, changeset và bảng lệnh `curl` nằm ở [`d
 
 **Sự thật đang diễn ra (không phải đề xuất):**
 
-1. Nhóm **chưa** chạy `scripts/setup_aws_foundation.sh` để cấp quyền từng người. Script có sẵn trong repo (`scripts/setup_aws_foundation.sh` và `.ps1`, quyền theo vai trò `deployer` / `frontend` / `reader` theo quyết định 17) nhưng **chưa chạy** — cần `iam:*` và `budgets:*` từ IAM admin/root.
-2. Trong thời gian chờ đó, nhóm dùng **một user IAM dùng chung** do TV5 tạo: `arn:aws:iam::567627324019:user/linkpulse-tv5`. Key nằm trong `~/.aws/credentials` dưới profile `[linkpulse-tv5]`.
+1. Nhóm **chưa** chạy `scripts/setup_aws_foundation.sh` để cấp quyền từng người. Script có sẵn trong repo (`scripts/setup_aws_foundation.sh` và `.ps1`, quyền theo vai trò `deployer` / `frontend` / `reader` theo quyết định 17) nhưng **chưa chạy được** — user đang dùng không có `iam:*` (xem bằng chứng chạy thật ở mục 0.4).
+2. Trong thời gian chờ đó, nhóm dùng **một user IAM dùng chung** do TV5 tạo: `arn:aws:iam::567627324019:user/linkpulse-tv5`. Key nằm trong `~/.aws/credentials` dưới profile `[default]`.
 3. Người chạy test là chính user đó nên **không có** console access (không có `LoginProfile`), và các API quản trị IAM bị chặn:
 
    ```text
@@ -85,7 +85,54 @@ Chi tiết từng lần deploy, changeset và bảng lệnh `curl` nằm ở [`d
    Đây chính là lý do edge deploy ở `ap-southeast-2` (mục 0.1).
 5. IAM **trong CloudFormation** thì đã đúng: stack `linkpulse-backend` tạo 4 Lambda Role (`ShortenFunctionRole`, `RedirectFunctionRole`, `LinksFunctionRole`, `ProcessClicksFunctionRole`, `HealthFunctionRole`, `StatsFunctionRole`) và 1 ManagedPolicy `OriginSecretReadPolicy`. Không cấp `iam:*` cho Lambda — mỗi Lambda chỉ có đúng quyền cần dùng.
 
-**Kết luận:** phần "phân quyền từng người" **chưa chạy**; mọi kiểm thử dưới đây chạy bằng user chung `linkpulse-tv5`. Xem [`scripts/setup_aws_foundation.sh`](../scripts/setup_aws_foundation.sh) để biết cách cấp quyền đúng khi có `iam:*`.
+**Kết luận:** phần "phân quyền từng người" **chưa chạy được**; mọi kiểm thử dưới đây chạy bằng user chung `linkpulse-tv5`. Xem [`scripts/setup_aws_foundation.sh`](../scripts/setup_aws_foundation.sh) để biết cách cấp quyền đúng khi có `iam:*`.
+
+### 0.4 Chạy thật script phân quyền — dừng ở bước preflight (bằng chứng)
+
+Ngày 2026-11-10, TV5 đã chạy thật cả hai bản script trên tài khoản `567627324019`. Cả hai **dừng
+ở bước preflight** với thông báo rõ ràng thay vì lỗi `AccessDenied` xen giữa quá trình
+(bản `.ps1` trước đây crash vì PowerShell coi stderr của AWS CLI là exception — đã sửa).
+
+**PowerShell (`scripts/setup_aws_foundation.ps1`):**
+
+```text
+==> Account: 567627324019 | Region workload: ap-southeast-2 | Region edge: us-east-1 | Budget: $5/mo
+
+!! KHÔNG ĐỦ QUYỀN — script cần quyền IAM admin (iam:*) và budgets:*.
+   Caller hiện tại: arn:aws:iam::567627324019:user/linkpulse-tv5
+   Lỗi: aws: [ERROR]: An error occurred (AccessDenied) when calling the GetGroup operation: User:
+   arn:aws:iam::567627324019:user/linkpulse-tv5 is not authorized to perform: iam:GetGroup on resource:
+   group linkpulse-devs because no identity-based policy allows the iam:GetGroup action.
+
+   Cách xử lý:
+   1) Chạy script này bằng root user hoặc IAM admin của tài khoản 567627324019.
+   2) Hoặc admin gán cho user hiện tại: iam:CreateUser, iam:CreateGroup, iam:CreatePolicy,
+      iam:AttachUserPolicy, iam:AttachGroupPolicy, iam:PutUserPolicy, iam:CreateLoginProfile,
+      iam:UpdateAccountPasswordPolicy, budgets:CreateBudget, budgets:UpdateBudget.
+```
+
+**Bash (`scripts/setup_aws_foundation.sh`)** cho ra cùng kết luận:
+
+```text
+==> Account: 567627324019 | Region workload: ap-southeast-2 | Region edge: us-east-1 | Budget: $5/mo
+
+!! KHÔNG ĐỦ QUYỀN — script cần quyền IAM admin (iam:*) và budgets:*.
+   Caller hiện tại: arn:aws:iam::567627324019:user/linkpulse-tv5
+   Lỗi: aws: [ERROR]: An error occurred (AccessDenied) when calling the GetGroup operation: ...
+```
+
+**Điều đã chạy được và còn lại trong account:**
+
+| Hạng mục | Trạng thái | Cách kiểm chứng |
+|---|---|---|
+| AWS Budget `linkpulse-monthly-ap-southeast-2-5usd` | ✅ **Đã có** — giới hạn `5.0 USD`/tháng, lọc Region `ap-southeast-2`, `ActualSpend = 0.0 USD` | `aws budgets describe-budgets --account-id 567627324019 --region us-east-1` |
+| Group `linkpulse-devs` + 4 policy theo vai trò | ❌ **Chưa tạo** — cần `iam:*` | `aws iam get-group --group-name linkpulse-devs` → `AccessDenied` |
+| IAM user riêng cho từng thành viên + MFA | ❌ **Chưa tạo** | `aws iam list-users` → `AccessDenied` |
+| LoginProfile (console access) cho `linkpulse-tv5` | ❌ **Chưa có** — user chỉ có access key | `aws iam get-login-profile --user-name linkpulse-tv5` → `AccessDenied` |
+
+> **Cách admin chạy được:** đăng nhập AWS Console bằng **root user** của `567627324019`, rồi chạy
+> `scripts/setup_aws_foundation.ps1` (hoặc `.sh`) với danh sách thành viên. Budget đã tạo nên
+> script chỉ cần phần IAM. Cần `iam:*` + `budgets:*`.
 
 ---
 
@@ -536,7 +583,7 @@ Kiểm tra: `docs/architecture.png` và `docs/architecture.md` đều đã đồ
 
 | # | Lớp | Lệnh kiểm | Kết quả mong đợi | Kết quả thực tế | Bằng chứng |
 |---|---|---|---|---|---|
-| 0 | Triển khai & phân quyền | `describe-stacks`, `sts get-caller-identity` | Ghi rõ stack/region/thời điểm/IAM | Edge ở `ap-southeast-2` (SCP chặn `us-east-1`); chưa cấp quyền từng người, dùng user chung `linkpulse-tv5` | mục 0 |
+| 0 | Triển khai & phân quyền | `describe-stacks`, `sts get-caller-identity` | Ghi rõ stack/region/thời điểm/IAM | Edge ở `ap-southeast-2` (SCP chặn `us-east-1`); Budget $5/tháng đã tạo; script phân quyền từng người **chạy thật nhưng dừng ở preflight** vì user không có `iam:*` | mục 0.1–0.4 |
 | 1 | WAF rate-based | 60 × POST `/api/shorten` | `403` khi vượt ngưỡng | **Chưa chạy** — trình bày bằng thiết kế (`infra/edge.yaml`, `EnableWaf=false`) để giữ chi phí $0 | mục 1 |
 | 2 | API Gateway throttling | 120 request song song | `429` `{"message":"Too Many Requests"}` | ☑ 35 lần 429 của API Gateway (không `Retry-After`) + 64 lần 429 của Lambda (có `Retry-After`) | [06](../screenshots/aws/lan3/06-apigateway-throttling.png) |
 | 3 | Rate limit theo IP | 15 × POST `/api/shorten` | 10 thành công rồi `429` + `Retry-After` | ☑ 10× `201`, 5× `429` + `Retry-After` (41→38) | [01](../screenshots/aws/lan3/01-ratelimit-output.png), [02](../screenshots/aws/lan3/02-rate-limits-table.png) |

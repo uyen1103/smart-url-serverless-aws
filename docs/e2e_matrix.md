@@ -43,6 +43,14 @@
 | Lỗi 5xx | Chưa chạy — không gây lỗi cố ý trên môi trường dùng chung. | Chưa chạy |
 | Phản hồi 403 HTML | Chưa chạy — WAF thật không bật (giữ `EnableWaf=false` để chi phí $0; `infra/edge.yaml` bọc Web ACL trong `Condition`). Lớp biên đã kiểm thật là `X-Origin-Verify`: gọi thẳng API Gateway trả `403` (`reason: origin_not_allowed`), qua CloudFront trả `200` ([ảnh](screenshots/aws/lan2/smoke-direct-403.png)). Phần giao diện với mock `waf_html` vẫn giữ kết quả trước ([ảnh](screenshots/e2e/21-waf-html-mock.png)). | Chưa chạy (WAF) |
 
+## Hạ tầng & phân quyền
+
+| Ca kiểm thử | Kết quả thực tế | Đánh giá |
+|---|---|---|
+| AWS Budget $5/tháng | `linkpulse-monthly-ap-southeast-2-5usd` — giới hạn `5.0 USD`, lọc Region `ap-southeast-2`, `ActualSpend = 0.0 USD` (`aws budgets describe-budgets --account-id 567627324019 --region us-east-1`) | Đạt |
+| Script phân quyền từng người | 2026-11-10: chạy thật cả `scripts/setup_aws_foundation.sh` và `.ps1`; cả hai **dừng ở bước preflight** với thông báo "KHÔNG ĐỦ QUYỀN — cần IAM admin" vì user `linkpulse-tv5` không có `iam:*` (`iam:GetGroup` → `AccessDenied`). Group `linkpulse-devs`, 4 policy theo vai trò, user riêng từng người và MFA **chưa tạo được**. Chi tiết: [security_test_week2.md](security_test_week2.md) mục 0.4 | Chưa chạy được (thiếu `iam:*`) |
+| Console access cho `linkpulse-tv5` | Chưa có `LoginProfile` (user chỉ có access key) → không đăng nhập được AWS Console bằng user này. Script đã hỗ trợ `--console-password` / `-ConsolePassword` để admin cấp khi chạy được | Chưa chạy (thiếu `iam:*`) |
+
 ## Quan sát chưa chặn merge
 
 1. `frontend/dashboard.html` dòng 32 đổi “Tất cả link của tôi” thành “Toàn hệ thống”. — Đã sửa.
