@@ -34,8 +34,8 @@ Mỗi lớp chặn ở một chỗ khác nhau nên phải kiểm từng lớp, k
 | Tham số edge | `ApiDomain=q7ldh9h6g9.execute-api.ap-southeast-2.amazonaws.com`, `EnableWaf=false`, `DomainName=` (trống), `CertificateArn=` (trống), `ShortenRateLimitPer5Min=50`, `RateLimitPer5Min=1000`, `OriginVerifySecret=/linkpulse/origin-verify` |
 | Tài nguyên trong stack | `Distribution`, `FrontendBucket`, `FrontendBucketPolicy`, `FrontendOac`, `RootRedirectFunction`, `ApiOriginRequestPolicy`, `SecurityHeadersPolicy`, `StaticCachePolicy` — tất cả `CREATE_COMPLETE` |
 
-Ảnh bằng chứng: [01-s3-bucket](../screenshots/aws/01-s3-bucket.png),
-[02-cloudfront-enabled-domain](../screenshots/aws/02-cloudfront-enabled-domain.png).
+Ảnh bằng chứng: [01-s3-bucket](screenshots/aws/01-s3-bucket.png),
+[02-cloudfront-enabled-domain](screenshots/aws/02-cloudfront-enabled-domain.png).
 
 ### 0.2 Deploy edge đúng thứ tự
 
@@ -136,7 +136,7 @@ Ngày 2026-11-10, TV5 đã chạy thật cả hai bản script trên tài khoả
 
 ---
 
-## 0. Chuẩn bị
+## 0.5 Chuẩn bị
 
 ```bash
 # Domain CloudFront và domain API Gateway (lấy từ output của stack)
@@ -283,7 +283,7 @@ Gửi 120 request, 60 chạy song song
 > `x-amzn-RequestId` (CloudFront đã bỏ header định danh request của API Gateway trước khi trả về),
 > nên phân biệt dựa vào **body** — đúng như yêu cầu của issue #27.
 
-Ảnh bằng chứng: [06-apigateway-throttling](../screenshots/aws/lan3/06-apigateway-throttling.png)
+Ảnh bằng chứng: [06-apigateway-throttling](screenshots/aws/lan3/06-apigateway-throttling.png)
 (text gốc: `docs/screenshots/aws/lan3/06-apigateway-throttling.png`).
 
 **Bằng chứng:** ☑ output 429 của cả hai lớp (có body và header `Retry-After`)
@@ -348,8 +348,8 @@ Bản ghi sau lần chạy (khóa `pk = shorten#<ip_hash>#<bucket>`):
 `cnt = 10` đúng bằng số request cho phép trong cửa sổ; `expires_at` là epoch giây hết hạn bản ghi.
 
 Ảnh bằng chứng:
-[01-ratelimit-output](../screenshots/aws/lan3/01-ratelimit-output.png) ·
-[02-rate-limits-table](../screenshots/aws/lan3/02-rate-limits-table.png)
+[01-ratelimit-output](screenshots/aws/lan3/01-ratelimit-output.png) ·
+[02-rate-limits-table](screenshots/aws/lan3/02-rate-limits-table.png)
 
 **Bằng chứng:** ☑ output 429 + `Retry-After` · ☑ ảnh bảng `rate_limits`
 
@@ -381,7 +381,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 ```
 
 Ảnh và kết quả đã có sẵn:
-- [`docs/screenshots/aws/lan2/smoke-direct-403.png`](../screenshots/aws/lan2/smoke-direct-403.png) — gọi thẳng API Gateway trả `403`.
+- [`docs/screenshots/aws/lan2/smoke-direct-403.png`](screenshots/aws/lan2/smoke-direct-403.png) — gọi thẳng API Gateway trả `403`.
 - [`docs/smoke_test.md`](smoke_test.md) — mục "Lần 2 (BaseUrl là domain CloudFront, gọi qua CloudFront)",
   dòng 2 của bảng: `curl.exe -s "$API/api/health"` (gọi thẳng, không qua CloudFront) → `403`.
   Ghi chú cùng file: lý do là `reason: origin_not_allowed`, còn qua CloudFront thì chạy — cơ chế
@@ -434,7 +434,7 @@ $ scripts/dyn_urls.sh get 0R4b1nm
 → `status = suspicious`, `flag_reason = bot_traffic`. ✔
 
 Ảnh bằng chứng:
-- [08-suspicious-flagged-link](../screenshots/aws/lan3/08-suspicious-flagged-link.png) — `get-item` bảng `urls` (ảnh do TV5 chụp lại).
+- [08-suspicious-flagged-link](screenshots/aws/lan3/08-suspicious-flagged-link.png) — `get-item` bảng `urls` (ảnh do TV5 chụp lại).
 - Dashboard và biểu đồ bot clicks của TV4: `01-dashboard-flagged.png`, `02-protection-flagged.png`,
   `03-stats-bot-clicks.png` trong `docs/screenshots/` — PR #31:
   https://github.com/uyen1103/smart-url-serverless-aws/pull/31
@@ -511,9 +511,9 @@ HTTP 400
 Domain đã được **gỡ khỏi** blocklist sau khi thử; bảng về lại rỗng.
 
 Ảnh bằng chứng:
-[03-blocklist-list](../screenshots/aws/lan3/03-blocklist-list.png) ·
-[04-blocked-domain-body](../screenshots/aws/lan3/04-blocked-domain-body.png) ·
-[05-blocklist-empty](../screenshots/aws/lan3/05-blocklist-empty.png)
+[03-blocklist-list](screenshots/aws/lan3/03-blocklist-list.png) ·
+[04-blocked-domain-body](screenshots/aws/lan3/04-blocked-domain-body.png) ·
+[05-blocklist-empty](screenshots/aws/lan3/05-blocklist-empty.png)
 
 **Bằng chứng:** ☑ output `blocked_domain` · ☑ output `blocklist.sh list`
 
@@ -562,8 +562,8 @@ Tổng chi phí thực = **0 USD** (các con số ở mức 10⁻⁹ USD là ph�
 Cost Explorer API ở mục 7.1 (cùng một nguồn dữ liệu).
 
 Ảnh bằng chứng:
-[07-billing-cost-zero](../screenshots/aws/lan3/07-billing-cost-zero.png) (API) ·
-[09-cost-explorer-console](../screenshots/aws/lan3/09-cost-explorer-console.png) (AWS Console)
+[07-billing-cost-zero](screenshots/aws/lan3/07-billing-cost-zero.png) (API) ·
+[09-cost-explorer-console](screenshots/aws/lan3/09-cost-explorer-console.png) (AWS Console)
 
 ### Kiểm `architecture.png` đã có ghi chú `verdict_cache` chưa
 
@@ -585,12 +585,12 @@ Kiểm tra: `docs/architecture.png` và `docs/architecture.md` đều đã đồ
 |---|---|---|---|---|---|
 | 0 | Triển khai & phân quyền | `describe-stacks`, `sts get-caller-identity` | Ghi rõ stack/region/thời điểm/IAM | Edge ở `ap-southeast-2` (SCP chặn `us-east-1`); Budget $5/tháng đã tạo; script phân quyền từng người **chạy thật nhưng dừng ở preflight** vì user không có `iam:*` | mục 0.1–0.4 |
 | 1 | WAF rate-based | 60 × POST `/api/shorten` | `403` khi vượt ngưỡng | **Chưa chạy** — trình bày bằng thiết kế (`infra/edge.yaml`, `EnableWaf=false`) để giữ chi phí $0 | mục 1 |
-| 2 | API Gateway throttling | 120 request song song | `429` `{"message":"Too Many Requests"}` | ☑ 35 lần 429 của API Gateway (không `Retry-After`) + 64 lần 429 của Lambda (có `Retry-After`) | [06](../screenshots/aws/lan3/06-apigateway-throttling.png) |
-| 3 | Rate limit theo IP | 15 × POST `/api/shorten` | 10 thành công rồi `429` + `Retry-After` | ☑ 10× `201`, 5× `429` + `Retry-After` (41→38) | [01](../screenshots/aws/lan3/01-ratelimit-output.png), [02](../screenshots/aws/lan3/02-rate-limits-table.png) |
-| 4 | Chặn gọi thẳng origin | GET API domain không có header | `403` | ☑ `403` (`reason: origin_not_allowed`) | [smoke-direct-403](../screenshots/aws/lan2/smoke-direct-403.png) |
-| 5 | Gắn cờ suspicious | `get-item` bảng `urls` | `status = suspicious` | ☑ `suspicious` / `bot_traffic` (link `0R4b1nm` của TV4, giữ nguyên) | [08](../screenshots/aws/lan3/08-suspicious-flagged-link.png), PR #31 |
-| 6 | Blocklist domain | POST URL domain bị chặn | `400 blocked_domain` | ☑ `400` `blocked_domain` với domain thật `example.org`, đã gỡ sau khi thử | [03](../screenshots/aws/lan3/03-blocklist-list.png), [04](../screenshots/aws/lan3/04-blocked-domain-body.png) |
-| 7 | Chi phí $0 | Cost Explorer | `$0` | ☑ API cho mọi dịch vụ `0 USD` **và** trang Cost Explorer trên Console cho `Total cost -$0.00` (13 dịch vụ) | [07](../screenshots/aws/lan3/07-billing-cost-zero.png), [09](../screenshots/aws/lan3/09-cost-explorer-console.png) |
+| 2 | API Gateway throttling | 120 request song song | `429` `{"message":"Too Many Requests"}` | ☑ 35 lần 429 của API Gateway (không `Retry-After`) + 64 lần 429 của Lambda (có `Retry-After`) | [06](screenshots/aws/lan3/06-apigateway-throttling.png) |
+| 3 | Rate limit theo IP | 15 × POST `/api/shorten` | 10 thành công rồi `429` + `Retry-After` | ☑ 10× `201`, 5× `429` + `Retry-After` (41→38) | [01](screenshots/aws/lan3/01-ratelimit-output.png), [02](screenshots/aws/lan3/02-rate-limits-table.png) |
+| 4 | Chặn gọi thẳng origin | GET API domain không có header | `403` | ☑ `403` (`reason: origin_not_allowed`) | [smoke-direct-403](screenshots/aws/lan2/smoke-direct-403.png) |
+| 5 | Gắn cờ suspicious | `get-item` bảng `urls` | `status = suspicious` | ☑ `suspicious` / `bot_traffic` (link `0R4b1nm` của TV4, giữ nguyên) | [08](screenshots/aws/lan3/08-suspicious-flagged-link.png), PR #31 |
+| 6 | Blocklist domain | POST URL domain bị chặn | `400 blocked_domain` | ☑ `400` `blocked_domain` với domain thật `example.org`, đã gỡ sau khi thử | [03](screenshots/aws/lan3/03-blocklist-list.png), [04](screenshots/aws/lan3/04-blocked-domain-body.png) |
+| 7 | Chi phí $0 | Cost Explorer | `$0` | ☑ API cho mọi dịch vụ `0 USD` **và** trang Cost Explorer trên Console cho `Total cost -$0.00` (13 dịch vụ) | [07](screenshots/aws/lan3/07-billing-cost-zero.png), [09](screenshots/aws/lan3/09-cost-explorer-console.png) |
 
 Ảnh chụp AWS Console cần chụp cho: WAF `BlockedRequests` theo rule (mục 1 — **chưa chạy**),
 CloudWatch throttling của API Gateway (đã có bằng chứng bằng output HTTP ở mục 2),
