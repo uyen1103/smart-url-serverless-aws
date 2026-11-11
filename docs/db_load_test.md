@@ -1,3 +1,4 @@
+
 # Database Load Test
 
 ## 1. Test configuration
@@ -33,23 +34,26 @@ Remaining target click events: 0
 
 Remaining target link-stat items: 0
 
-## 4. Load threshold estimation
+## 4. Known Limitations (Giới hạn đã biết)
 
-The Clicks table is configured with 4 WCU.
+| Component | Configuration | Potential limitation |
+|---|---|---|
+| Clicks table | 4 WCU | Limited write throughput; high write rates may cause throttling. |
+| Delete-link Lambda | 15-second timeout | Deleting a large number of click records may exceed the execution timeout. |
 
-A single standard DynamoDB write of an item up to 1 KB consumes approximately 1 WCU. Under ideal conditions, 4 WCU supports approximately 4 such writes per second.
+### Estimated impact
 
-For 1,200 click writes:
+- The Clicks table has only 4 WCU. Assuming standard items up to 1 KB, it supports approximately 4 writes per second under ideal conditions.
+- Deleting a link with more than approximately 1,200 click records may encounter throttling or Lambda timeout, depending on request rate, pagination, retries, and execution time.
+- At 4 writes per second, processing 1,200 individual writes would theoretically take approximately 300 seconds without batching or parallel processing.
 
-- Ideal minimum write time: approximately 300 seconds at 4 writes/second.
-- A burst of 1,200 writes in a short period can exceed provisioned throughput.
-- Actual throttling depends on item size, traffic distribution, burst capacity, retries, and concurrent requests.
+### Important note
 
-The delete-link Lambda has a 15-second timeout. Purging 50,000 click records may require multiple Query and BatchWriteItem requests. Whether it times out depends on request latency, pagination, retry behavior, and throughput.
+These values are estimates, not measured AWS limits or actual failure results.
 
-These are theoretical estimates, not measured AWS throttling or Lambda timeout results.
+The local benchmark uses Moto, which does not simulate DynamoDB provisioned-throughput throttling or actual AWS Lambda execution time. Therefore, these limitations must be verified in an AWS environment before drawing conclusions about real production behavior.
 
-## 5. Limitations
+## 5. Benchmark Limitations
 
 This benchmark uses Moto, an in-memory AWS service mock.
 
