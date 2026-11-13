@@ -217,6 +217,10 @@ __marimo__/
 .env.*
 !.env.example
 
+# Secret ghi ra file tạm khi kiểm thử — KHÔNG được commit
+secret_origin.txt
+scripts/tmp_zoom*.py
+
 # Frontend dependencies (if using Node.js)
 node_modules/
 dist/
