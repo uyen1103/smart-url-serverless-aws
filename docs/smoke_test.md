@@ -1,7 +1,7 @@
 # Smoke test backend (TV1)
 
 Mỗi lần deploy ghi một mục: ngày giờ, tham số đã deploy, lệnh `curl`/PowerShell và kết quả rút gọn.
-Ảnh chụp AWS Console của từng lần nằm trong `docs/screenshots/aws/lan1/` và `docs/screenshots/aws/lan2/`.
+Ảnh chụp AWS Console của từng lần nằm trong `docs/screenshots/aws/lan1/` và `docs/screenshots/aws/lan2/`; ảnh lần 3 nằm trong `docs/screenshots/e2e/`.
 
 ## Lần 1 (BaseUrl tạm, gọi thẳng API Gateway)
 
@@ -133,7 +133,7 @@ Nhận xét:
 
 **Mục đích:** deploy với ngưỡng demo để kiểm tra cờ suspicious (spike và bot).
 
-**Lệnh:** như lần 2, thêm `SpikeClicksPerMinute=30` và `BotMinClicks=10`.
+**Lệnh:** như lần 2, thêm `SpikeClicksPerMinute=30` và `BotMinClicks=10`. Tạo changeset bằng `sam deploy --no-execute-changeset`, xem trước, rồi chạy bằng `aws cloudformation execute-change-set`.
 
 **Tham số:** `IpHashSalt=*****` (giữ nguyên lần 1), `BaseUrl=https://d3rsimgoxz85kx.cloudfront.net`, `OwnDomains=d3rsimgoxz85kx.cloudfront.net`, `ErrorPageMode=redirect`, `OriginVerifySecretParam=/linkpulse/origin-verify`, `SpikeClicksPerMinute=30`, `BotMinClicks=10`.
 
@@ -162,3 +162,6 @@ Nhận xét:
 
 **Việc sau demo:** deploy lại với `SpikeClicksPerMinute=300`, `BotMinClicks=50` để link bình thường không bị gắn cờ nhầm.
 
+## Kiểm bản deploy so với main — 13/11/2026 15:51
+
+Đã kiểm, khớp main (13/11/2026 15:51). Bản deploy trên AWS (stack `linkpulse-backend`, deploy lần 3) build từ commit `9f541aa`; `main` hiện ở commit `7a04352`. Từ `9f541aa` đến nay các PR đã merge chỉ sửa `docs/` (ảnh và `docs/smoke_test.md`), không có thay đổi nào trong `backend/` (`git diff --stat 9f541aa HEAD -- backend` không có kết quả), nên không cần deploy lại và không cần chạy lại smoke test.
