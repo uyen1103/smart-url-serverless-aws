@@ -128,3 +128,37 @@ Nhận xét:
 - `api-gateway.png`, `api-gateway-routes.png`, `api-gateway-routes-2.png`: API `linkpulse-backend` và các route.
 - `dynamodb.png`: 5 bảng DynamoDB của stack.
 - `cloudwatch.png`: 6 log group Lambda, cột lưu giữ là 1 tuần (7 ngày).
+
+## Lần 3 — 13/11/2026
+
+**Mục đích:** deploy với ngưỡng demo để kiểm tra cờ suspicious (spike và bot).
+
+**Lệnh:** như lần 2, thêm `SpikeClicksPerMinute=30` và `BotMinClicks=10`.
+
+**Tham số:** `IpHashSalt=*****` (giữ nguyên lần 1), `BaseUrl=https://d3rsimgoxz85kx.cloudfront.net`, `OwnDomains=d3rsimgoxz85kx.cloudfront.net`, `ErrorPageMode=redirect`, `OriginVerifySecretParam=/linkpulse/origin-verify`, `SpikeClicksPerMinute=30`, `BotMinClicks=10`.
+
+**Deploy:** 14:58 (UTC+7) ngày 13/11/2026. Changeset `samcli-deploy1794541173`, thao tác `UPDATE_STACK` ID `97f59d87-3b1d-4258-84e4-28188368a0f8`. Stack `linkpulse-backend` ở trạng thái `UPDATE_COMPLETE`. `ProcessClicksFunction` có `SPIKE_CLICKS_PER_MINUTE=30`, `BOT_MIN_CLICKS=10`. Độ dài salt vẫn là 32 ký tự (không đổi).
+
+**Kết quả smoke test**
+
+| Bước | Kết quả |
+|---|---|
+| `GET /api/health` | `{"status": "ok"}` |
+| `POST /api/shorten` | Tạo link `gLvW9pX` thành công (`created: true`) |
+| Cờ bot (curl, 40 lần) | Link `gLvW9pX`: 10 lần `302`, sau đó `403 link_suspicious`; stats: 10 click, `bot_clicks=10`; status `suspicious` |
+| Cờ spike (UA trình duyệt, 40 lần) | Link `8j9KaKl`: 31 lần `302`, sau đó `403`; 31 click, `bot_clicks=0`; status `suspicious`. Chạy lại với link `xfgamwh`: 30 lần `302`, sau đó 10 lần `403` |
+| Link suspicious trên trình duyệt | Chuyển sang `/warning.html?reason=suspicious&code=8j9KaKl` |
+| Link hết lượt (`max_clicks=1`) | Link `jCkvxmk`: lần 1 `302`, lần 2 `410 max_clicks_reached`; trình duyệt chuyển sang `/error.html?type=max_clicks` |
+
+**Ảnh** (trong `docs/screenshots/e2e/`):
+
+- `23-lan3-env-processclicks.png`: biến môi trường ProcessClicksFunction (đã che salt)
+- `24-lan3-stack-update-complete.png`: stack `UPDATE_COMPLETE`
+- `25-lan3-stack-events.png`: sự kiện cập nhật stack
+- `26-lan3-terminal-302-403.png`: terminal cờ spike, link `xfgamwh` (30 lần `302`, 10 lần `403`)
+- `27-lan3-warning-page.png`: trang `warning.html`
+- `28-lan3-expired-error.png`: trang `error.html?type=max_clicks`
+- `29-lan3-terminal-410.png`: terminal `410 max_clicks_reached`
+
+**Việc sau demo:** deploy lại với `SpikeClicksPerMinute=300`, `BotMinClicks=50` để link bình thường không bị gắn cờ nhầm.
+
