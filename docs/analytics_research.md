@@ -10,9 +10,15 @@ Event source mapping cấu hình retry, tách batch lỗi và gửi record khôn
 
 Mục tiêu thiết kế là độ trễ từ click tới dashboard **không quá 10 giây**, gồm cả chu kỳ polling API của dashboard. Đây là mục tiêu, không phải SLA hay số đo đã xác nhận; độ trễ thực tế phụ thuộc tải, xử lý và tần suất polling.
 
+## Giới hạn đã biết
+
+- DynamoDB Streams và Lambda xử lý theo cơ chế at-least-once; Lambda hiện chưa khử trùng lặp, trong khi `apply_group` dùng `ADD` để cộng số liệu nên một record được retry có thể cộng thêm lần nữa. Vì vậy `clicks`, `bot_clicks` và các bộ đếm chiều có thể bị cao hơn thực tế, kéo theo ngưỡng phát hiện lạm dụng có thể đạt sớm hơn. Với demo ngắn, điều này chủ yếu làm số liệu hiển thị thiếu chính xác; chưa có số đo để định lượng mức ảnh hưởng. Nếu có thời gian, chưa làm, có thể lưu khóa định danh record đã xử lý để bỏ qua lần retry.
+- DynamoDB giới hạn mỗi item tối đa 400 KB; item theo phút giữ tập `ips`, còn item `GLOBAL` có thêm thuộc tính đếm `l:<code>` cho từng mã link. Code hiện không giới hạn số `ip_hash` trong `ips` hoặc số thuộc tính `l:<code>`, nên item có thể tăng quá giới hạn khi cardinality cao. Khi đó cập nhật thống kê có thể lỗi, khiến số liệu bị thiếu hoặc trễ và record có thể đi qua retry/DLQ. Với demo nhỏ, chưa có số đo kích thước item để xác nhận ảnh hưởng; nếu có thời gian, chưa làm, có thể tách/shard dữ liệu hoặc dùng cấu trúc bounded-cardinality cho tập IP.
+- Phát hiện lạm dụng tính trên bucket phút UTC cố định, không phải cửa sổ trượt: `aggregate` nhóm event theo phút rồi `process_events` đánh giá item thống kê của bucket đó. Trong lần demo ngày 2026-11-09, 60 request lần đầu bị chia thành 25 click ở phút 14:24 và 36 ở phút 14:25, nên không phút nào đạt 50; lần tiếp theo bắt đầu đầu phút 14:27 và đạt 50 click bot trong bucket đó thì link bị gắn cờ. Đây là minh họa của một lần chạy, chưa phải phép đo độ trễ hay xác nhận ngưỡng đang cấu hình trên stack; nếu có thời gian, chưa làm, có thể bổ sung phép thử lặp lại quanh ranh giới phút và dùng cửa sổ trượt nếu phù hợp yêu cầu.
+
 ## Ánh xạ click event vào bảng clicks
 
-Bảng `clicks` có PK `short_code` và SK tên `sk` (không phải `click_key`), với giá trị `<timestamp ISO UTC>#<id duy nhất>`. Trường `timestamp` trong event là phần ISO UTC ở đầu của `sk`.
+Bảng `clicks` có PK `short_code` và SK tên `sk` (không phải `click_key`), với giá trị gồm timestamp ISO UTC, dấu `#` và ID duy nhất. Trường `timestamp` trong event là phần ISO UTC ở đầu của `sk`.
 
 `expires_at` là kiểu Number chứa Unix epoch giây và được dùng làm thuộc tính TTL. Mặc định, click được lưu 30 ngày và thống kê trong bảng `stats` được lưu 8 ngày. Hai trường chỉ có trong item của bảng, không có trong [click_event_schema.json](./click_event_schema.json), là `sk` và `expires_at`.
 
