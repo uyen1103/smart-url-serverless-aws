@@ -89,6 +89,8 @@ Chi tiết từng lần deploy, changeset và bảng lệnh `curl` nằm ở [`d
 
 ### 0.4 Chạy thật script phân quyền — dừng ở bước preflight (bằng chứng)
 
+> Cập nhật 2026-11-13: nhóm chốt cách truy cập theo project của tài khoản chung nên không chạy tiếp script phân quyền. Nội dung dưới đây giữ lại làm bằng chứng lần chạy ngày 2026-11-10.
+
 Ngày 2026-11-10, TV5 đã chạy thật cả hai bản script trên tài khoản `567627324019`. Cả hai **dừng
 ở bước preflight** với thông báo rõ ràng thay vì lỗi `AccessDenied` xen giữa quá trình
 (bản `.ps1` trước đây crash vì PowerShell coi stderr của AWS CLI là exception — đã sửa).

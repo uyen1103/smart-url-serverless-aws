@@ -48,9 +48,9 @@
 
 | Ca kiểm thử | Kết quả thực tế | Đánh giá |
 |---|---|---|
-| AWS Budget $5/tháng | `linkpulse-monthly-ap-southeast-2-5usd` — giới hạn `5.0 USD`, lọc Region `ap-southeast-2`, `ActualSpend = 0.0 USD` (`aws budgets describe-budgets --account-id 567627324019 --region us-east-1`) | Đạt |
-| Script phân quyền từng người | 2026-11-10: chạy thật cả `scripts/setup_aws_foundation.sh` và `.ps1`; cả hai **dừng ở bước preflight** với thông báo "KHÔNG ĐỦ QUYỀN — cần IAM admin" vì user `linkpulse-tv5` không có `iam:*` (`iam:GetGroup` → `AccessDenied`). Group `linkpulse-devs`, 4 policy theo vai trò, user riêng từng người và MFA **chưa tạo được**. Chi tiết: [security_test_week2.md](security_test_week2.md) mục 0.4 | Chưa chạy được (thiếu `iam:*`) |
-| Console access cho `linkpulse-tv5` | Chưa có `LoginProfile` (user chỉ có access key) → không đăng nhập được AWS Console bằng user này. Script đã hỗ trợ `--console-password` / `-ConsolePassword` để admin cấp khi chạy được | Chưa chạy (thiếu `iam:*`) |
+| AWS Budget $5/tháng | `linkpulse-monthly-ap-southeast-2-5usd` — giới hạn `5.0 USD`, lọc Region `ap-southeast-2`. 2026-11-10: `ActualSpend = 0.0 USD` (`aws budgets describe-budgets --account-id <ACCOUNT_ID> --region us-east-1`). 2026-11-13: màn hình Cost and usage của AWS Console hiện chi phí tháng hiện tại khoảng 0,05 USD, còn trong credit của gói free plan ([ảnh](screenshots/aws/console-cost-and-credits.png)). | Đạt |
+| Phân quyền thành viên | Nhóm dùng một tài khoản AWS chung; 5 thành viên được thêm vào project "Do the Thing" để truy cập AWS Console ([ảnh](screenshots/aws/project-members.png), đã che email). Script `scripts/setup_aws_foundation.sh` và `.ps1` đã chạy thử ngày 2026-11-10 nhưng **dừng ở bước preflight** vì user `linkpulse-tv5` không có `iam:*` (`iam:GetGroup` → `AccessDenied`), nên group `linkpulse-devs`, user riêng từng người và MFA **không được tạo**. Chi tiết: [security_test_week2.md](security_test_week2.md) mục 0.4. | Đạt (truy cập theo project); script IAM chưa chạy được (thiếu `iam:*`) |
+| Dùng AWS CLI | Cả nhóm dùng chung một IAM user `linkpulse-tv5` với access key để chạy AWS CLI. User này không có `LoginProfile` nên không đăng nhập console bằng user đó; thành viên vào console qua project "Do the Thing". | Đạt (cách làm thực tế của nhóm) |
 
 ## Quan sát chưa chặn merge
 

@@ -88,8 +88,8 @@ CI chạy tự động `pytest` và `cfn-lint` mỗi khi có pull request: `.git
 
 ## Deploy
 
-Toàn bộ hạ tầng nằm trên **một tài khoản AWS chung**. Không ai dùng tài khoản root; mỗi người có
-IAM user riêng (`linkpulse-<tên>`) và bắt buộc MFA.
+Toàn bộ hạ tầng nằm trên **một tài khoản AWS chung** của nhóm. Năm thành viên cùng được thêm vào
+project **"Do the Thing"** của tài khoản này. Không dùng root user cho việc thường ngày.
 
 ### Bước 0 — Chuẩn bị tài khoản (chỉ làm một lần)
 
@@ -99,45 +99,20 @@ Region workload đã chốt là `ap-southeast-2`. Mọi thành viên chạy:
 aws configure set region ap-southeast-2
 ```
 
-#### 0.0. Loại tài khoản: bắt buộc là "Sign up for AWS (advanced)"
+#### 0.0. Tài khoản AWS của nhóm
 
-AWS có hai luồng đăng ký. Nhóm **phải dùng tài khoản advanced**, không dùng tài khoản kiểu
-"new" (Builder ID + project):
+Nhóm dùng một tài khoản AWS chung (gói free plan có credit), năm thành viên được thêm vào project
+"Do the Thing" để vào AWS Console. Region workload là `ap-southeast-2`.
 
-| Nhu cầu của nhóm | Advanced | Kiểu "new" |
-|---|---|---|
-| IAM user / group / managed policy tùy chỉnh, bắt buộc MFA | Có | Không |
-| AWS WAF gắn với CloudFront (scope CLOUDFRONT, `us-east-1`) | Có | Không |
-| Tự chọn Region | Có | Không — bị ghim theo nước |
-| AWS Organizations, IAM Access Analyzer | Có | Không |
+Các việc nhóm đã làm trên tài khoản này đều nằm trong credit: chi phí tháng hiện tại khoảng 0,05 USD
+(kiểm tra ngày 2026-11-13). Ngân sách cảnh báo 5 USD/tháng đã được tạo bằng `terraform/`.
 
-Lý do kỹ thuật: tài khoản kiểu "new" ghim region theo nước (Việt Nam → `ap-southeast-2`) và chặn
-những tính năng tạo tài nguyên ngoài region đó — trong đó có AWS WAF đi kèm CloudFront. Kiến trúc
-LinkPulse cần cả WAF+CloudFront lẫn IAM group `linkpulse-devs`, nên tài khoản advanced là bắt buộc.
+Về cấp quyền IAM từng người: script `scripts/setup_aws_foundation.sh` và `.ps1` có sẵn trong repo nhưng
+nhóm **chưa chạy được** vì user đang dùng không có `iam:*` (xem mục 0.3 và bằng chứng ở
+[`docs/security_test_week2.md`](docs/security_test_week2.md) mục 0.4). Trong thời gian đó nhóm dùng
+một IAM user dùng chung để chạy AWS CLI.
 
-Nếu tài khoản đã tạo theo kiểu "new", vào AWS Settings → Projects → **Explore advanced features**
-để kích hoạt (không hoàn tác được, và phải nâng lên Paid Plan trước).
-
-Về việc đăng ký từ Việt Nam: AWS có hỗ trợ (`VN` thuộc nhóm region `ap-southeast-2`), nhưng bước
-xác minh số điện thoại ở một số luồng đăng ký có thể từ chối mã quốc gia `+84`. Khi bị từ chối,
-mở support case tại https://support.console.aws.amazon.com/support/home → **Create case** →
-Service: *Account and billing* → Category: *Account activation* → Severity: *Urgent business
-impacting question* → **Contact us → Chat**, nêu rõ email root user và số điện thoại đã nhập.
-AWS có thể kích hoạt thủ công kể cả khi tài khoản chưa kích hoạt được.
-
-#### 0.1. Tạo IAM user quản trị tạm
-
-Cần một user có quyền `iam:*` và `budgets:*` để chạy script cấp quyền. Tạo user tạm, dùng xong
-xoá — không dùng key của root.
-
-Trên AWS Console ([IAM Users](https://console.aws.amazon.com/iam/home#/users)):
-
-1. **Create user** → tên `linkpulse-setup` → không bật console access → Next
-2. **Permissions** → **Attach policies** → tìm `AdministratorAccess` → **Next**
-3. **Tags** → `Key=Project, Value=LinkPulse`, `Key=Owner, Value=tv5` → Next → Create
-4. Vào user `linkpulse-setup` → **Security credentials** → **Create access key** → copy key
-
-Nhập vào CLI:
+#### 0.1. Kiểm tra đăng nhập CLI
 
 ```bash
 aws configure
@@ -154,7 +129,7 @@ aws sts get-caller-identity
 ```
 
 Ra `Account` và `Arn` là được. Nếu báo `Unable to locate credentials` thì key sai hoặc chưa
-`aws configure`.
+`aws configure`. Không chia sẻ access key qua tin nhắn nhóm và không commit key lên repo.
 
 #### 0.2. Kiểm tra tài khoản trước khi làm gì
 
@@ -171,17 +146,18 @@ Trên Windows:
 Lệnh này cho biết trước Region nào bị chặn bởi service control policy, CloudFront/WAF có dùng
 được không, và budget đã tồn tại chưa — tránh mất thời gian deploy rồi mới biết bị chặn.
 
-#### 0.3. Cấp quyền cho 5 thành viên
+#### 0.3. Cấp quyền IAM từng người (tùy chọn, cần IAM admin)
 
-Cách gắn email trực tiếp theo từng người, không phải nhớ thứ tự:
+Chỉ làm khi có một user hoặc root có quyền `iam:*` và `budgets:*`. Script dừng ngay ở bước
+preflight nếu thiếu quyền và liệt kê đúng các action cần cấp.
 
 ```bash
 ./scripts/setup_aws_foundation.sh \
-  --member tv1=kinkit784@gmail.com \
-  --member tv2=nguyenuyen2017tn@gmail.com \
-  --member tv3=lamvanhau202101@gmail.com \
-  --member tv4=yendoan20062020@gmail.com \
-  --member tv5=liemnt0773@ut.edu.vn \
+  --member tv1=<email-tv1> \
+  --member tv2=<email-tv2> \
+  --member tv3=<email-tv3> \
+  --member tv4=<email-tv4> \
+  --member tv5=<email-tv5> \
   --region ap-southeast-2 --budget 5
 ```
 
@@ -189,91 +165,25 @@ Trên Windows:
 
 ```powershell
 .\scripts\setup_aws_foundation.ps1 `
-  -Member @("tv1=kinkit784@gmail.com", "tv2=nguyenuyen2017tn@gmail.com", "tv3=lamvanhau202101@gmail.com", "tv4=yendoan20062020@gmail.com", "tv5=liemnt0773@ut.edu.vn") `
+  -Member @("tv1=<email-tv1>", "tv2=<email-tv2>", "tv3=<email-tv3>", "tv4=<email-tv4>", "tv5=<email-tv5>") `
   -Region ap-southeast-2 -Budget 5
 ```
 
 Xem trước thay đổi mà không thực thi: thêm `--dry-run` (bash) hoặc `-DryRun` (PowerShell).
 
-**Cấp console access (tuỳ chọn):** user IAM tạo bằng script mặc định **không** đăng nhập được AWS
-Console (chỉ dùng Access Key qua CLI). Muốn thành viên vào console thì thêm tuỳ chọn console access:
+Muốn user IAM đăng nhập được console thì thêm `--console-password "<mật-khẩu>"` (bash) hoặc
+`-ConsolePassword "<mật-khẩu>"` (PowerShell). Mật khẩu phải khớp password policy của tài khoản:
+**≥ 14 ký tự, có chữ hoa + chữ thường + số + ký hiệu**. Không ghi mật khẩu vào repo.
 
-```bash
-./scripts/setup_aws_foundation.sh \
-  --member tv5=liamnguyen.piupear206@gmail.com \
-  --console-password "LinkPulse-TV5-2026!x"
-```
-
-```powershell
-.\scripts\setup_aws_foundation.ps1 `
-  -Member @("tv5=liamnguyen.piupear206@gmail.com") `
-  -ConsolePassword "LinkPulse-TV5-2026!x"
-```
-
-Mật khẩu phải khớp password policy của tài khoản: **≥ 14 ký tự, có chữ hoa + chữ thường + số + ký hiệu**.
-Lệnh này tạo `LoginProfile` (chỉ hiện mật khẩu 1 lần) và **bỏ qua** user đã có console access.
-Đăng nhập console bằng: Account `567627324019` → chọn **IAM user** → username `linkpulse-tv5` → mật khẩu đã cấp.
-
-> ⚠️ Root user của tài khoản đã đăng nhập được console; user `linkpulse-tv5` thì chưa (thiếu `LoginProfile`).
-> Không dùng root cho việc thường — root bắt buộc MFA và không thuộc phạm vi phân quyền của nhóm.
-
-> ℹ️ **Script cần quyền IAM admin.** Cả hai bản đều có bước preflight: nếu user đang chạy không có
-> `iam:*` / `budgets:*`, script **dừng ngay** với thông báo rõ ràng (thay vì lỗi `AccessDenied`
-> xen giữa quá trình) và liệt kê đúng các action cần cấp. Chạy script bằng **root user** hoặc
-> IAM admin của tài khoản `567627324019`.
-> Bằng chứng chạy thật: [`docs/security_test_week2.md`](docs/security_test_week2.md) mục 0.4.
-
-Bảng ánh xạ:
-
-| Thành viên | Module | Email | IAM user | Vai trò |
-|---|---|---|---|---|
-| Trần Hữu Nam | TV1 Backend | kinkit784@gmail.com | `linkpulse-tv1` | deployer |
-| Nguyễn Thảo Uyên | TV2 Frontend | nguyenuyen2017tn@gmail.com | `linkpulse-tv2` | frontend |
-| Lâm Văn Hậu | TV3 Database | lamvanhau202101@gmail.com | `linkpulse-tv3` | reader |
-| Đoàn Lê Hồng Yến | TV4 Analytics | yendoan20062020@gmail.com | `linkpulse-tv4` | reader |
-| Liam Nguyễn | TV5 Security & DevOps | liemnt0773@ut.edu.vn | `linkpulse-tv5` | deployer |
-
-Kiểm tra kết quả:
+Quyền theo vai trò khi script chạy được: TV1 và TV5 là `deployer`, TV2 là `frontend`, TV3 và TV4 là
+`reader`. Kiểm tra kết quả:
 
 ```bash
 aws iam get-group --group-name linkpulse-devs
 aws iam list-attached-user-policies --user-name linkpulse-tv1
-aws iam list-attached-user-policies --user-name linkpulse-tv3
 ```
 
-#### 0.4. Xoá user quản trị tạm
-
-```bash
-aws iam delete-access-key --user-name linkpulse-setup --access-key-id <ACCESS_KEY_ID>
-aws iam detach-user-policy --user-name linkpulse-setup --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
-aws iam delete-user --user-name linkpulse-setup
-```
-
-Sau bước này không còn user nào có `AdministratorAccess` trong nhóm.
-
-#### 0.5. Gửi thông tin cho 5 người
-
-Gửi cho mỗi người một tin nhắn, mẫu:
-
-> Chào bạn, tài khoản AWS chung của nhóm đã sẵn sàng cho bạn.
->
-> 1. AWS Console → IAM → Users → `linkpulse-tv<N>` → **Security credentials** → **Assign MFA device**
->    (bắt buộc, chọn TOTP với app Google Authenticator)
-> 2. Sau khi bật MFA xong mới tạo **Access key** (Create access key)
-> 3. Trên máy chạy:
->    ```
->    aws configure set region ap-southeast-2
->    aws configure
->    ```
-> 4. Kiểm tra email budget đã về hộp thư của bạn chưa (kiểm tra cả Spam)
-
-Mỗi người tự bật MFA và tự tạo key của mình — không chia sẻ key.
-
-Nếu admin đã chạy script với `--console-password`, thêm dòng này vào tin nhắn để thành viên đăng nhập
-console (ngoài MFA + access key ở trên):
-
-> 5. Đăng nhập AWS Console: Account `567627324019` → chọn **IAM user** → username `linkpulse-tv<N>` →
->    mật khẩu đã cấp. Bắt buộc nhập mã MFA từ app Authenticator.
+Bằng chứng chạy thật: [`docs/security_test_week2.md`](docs/security_test_week2.md) mục 0.4.
 
 ### Bước 1 — Deploy backend (lần 1)
 
@@ -288,7 +198,7 @@ Nhập `IpHashSalt` (tối thiểu 16 ký tự, giữ kín). Các tham số khá
 
 ### Bước 2 — Deploy lớp biên
 
-Stack edge dùng CloudFront nên phải deploy ở `us-east-1`:
+Stack edge dùng CloudFront. Theo mặc định deploy ở `us-east-1`:
 
 ```bash
 SECRET=$(openssl rand -hex 24)
@@ -386,12 +296,13 @@ Trên Windows, chạy script Python với `PYTHONUTF8=1` và `PYTHONIOENCODING=u
 
 ### Ảnh bằng chứng trên AWS Console
 
-Một số bằng chứng cần ảnh chụp từ AWS Console (IAM user `linkpulse-tv5` không có `LoginProfile`
-nên **không** đăng nhập được console — dùng root user hoặc cấp `Console access` cho user):
+Một số bằng chứng cần ảnh chụp từ AWS Console. Thành viên đăng nhập console qua project
+"Do the Thing" (IAM user dùng chung cho CLI không có `LoginProfile`, nên không đăng nhập console
+bằng user đó).
 
 | Bằng chứng | Đường dẫn console | File ảnh |
 |---|---|---|
-| Chi phí $0 | Billing and Cost Management → Cost Explorer | `docs/screenshots/aws/lan3/09-cost-explorer-console.png` |
+| Chi phí | Billing and Cost Management → Cost Explorer | `docs/screenshots/aws/lan3/09-cost-explorer-console.png` |
 
 Các ảnh còn lại (`01`–`08`) dựng từ output thật của AWS CLI bằng `scripts/render_evidence.py`.
 
@@ -415,9 +326,10 @@ Vai trò trong nhóm:
 | TV4 — Analytics | Đoàn Lê Hồng Yến | `doanlehongyen` |
 | TV5 — Security & DevOps | Liam Nguyễn | `piupear206-oss` |
 
-Tài khoản AWS chung: một tài khoản cho cả nhóm, mỗi người có IAM user riêng theo bảng ở Bước 0.
-Quyền theo vai trò: TV1 và TV5 được `PowerUserAccess` cộng quyền tạo IAM role/policy cho SAM và
-deploy edge; TV2 chỉ ghi bucket giao diện và tạo invalidation CloudFront; TV3 và TV4 chỉ đọc.
+Tài khoản AWS chung: một tài khoản cho cả nhóm, năm thành viên cùng được thêm vào project
+"Do the Thing". Phân quyền IAM theo vai trò (TV1 và TV5 `deployer`, TV2 `frontend`, TV3 và TV4
+`reader`) đã được viết sẵn trong `scripts/setup_aws_foundation.*` nhưng chưa chạy được vì thiếu
+quyền `iam:*`; xem mục 0.3.
 
 Quyết định chung của nhóm (Region, thứ tự deploy, ngưỡng chống lạm dụng, quyền IAM) nằm ở
 [`docs/QUYET_DINH_CHOT_TUAN_2.md`](docs/QUYET_DINH_CHOT_TUAN_2.md). Đóng góp theo
