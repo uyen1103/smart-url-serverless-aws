@@ -14,6 +14,12 @@
   .\scripts\setup_aws_foundation.ps1 `
       -Member @("tv1=kinkit784@gmail.com", "tv2=nguyenuyen2017tn@gmail.com", "tv3=lamvanhau202101@gmail.com", "tv4=yendoan20062020@gmail.com", "tv5=liemnt0773@ut.edu.vn") `
       -Region ap-southeast-2 -Budget 5
+.EXAMPLE
+  # Cấp cả console access cho từng người (cần root/IAM admin).
+  # Mật khẩu phải khớp password policy: >= 14 ký tự, hoa + thường + số + ký hiệu.
+  .\scripts\setup_aws_foundation.ps1 `
+      -Member @("tv5=liamnguyen.piupear206@gmail.com") `
+      -ConsolePassword "LinkPulse-TV5-2026!x"
 #>
 [CmdletBinding()]
 param(
@@ -24,6 +30,7 @@ param(
   [string]$Region = "ap-southeast-2",
   [string]$EdgeRegion = "us-east-1",
   [int]$Budget = 5,
+  [string]$ConsolePassword = "",
   [switch]$DryRun
 )
 
@@ -38,6 +45,28 @@ function Invoke-Run([string]$cmd) {
     Write-Host "[dry-run] $cmd" -ForegroundColor Gray
   } else {
     Invoke-Expression $cmd
+  }
+}
+
+# Gọi AWS CLI mà không bị PowerShell coi là lỗi fatal khi AWS in ra stderr.
+# AWS CLI trả mã lỗi (không phải exception) cho các lệnh dò trạng thái như
+# `iam get-group` khi user chưa có quyền — với $ErrorActionPreference = "Stop"
+# thì stderr sẽ làm script chết ngang. Hàm này trả về exit code và giữ stderr.
+function Invoke-AwsProbe {
+  param([string[]]$AwsArgs)
+
+  $prevEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $errFile = Join-Path $env:TEMP ("aws-probe-" + [System.Guid]::NewGuid().ToString() + ".err")
+    $global:LASTEXITCODE = 0
+    & aws @AwsArgs 2> $errFile | Out-Null
+    $code = $LASTEXITCODE
+    $errText = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue)
+    Remove-Item $errFile -Force -ErrorAction SilentlyContinue
+    return [pscustomobject]@{ ExitCode = $code; StdErr = $errText }
+  } finally {
+    $ErrorActionPreference = $prevEap
   }
 }
 
@@ -103,6 +132,34 @@ for ($i = 0; $i -lt $memberArr.Count; $i++) {
 $accountId = aws sts get-caller-identity --query Account --output text
 Log-Info "Account: $accountId | Region workload: $Region | Region edge: $EdgeRegion | Budget: `$$Budget/mo"
 
+# Preflight: script cần iam:* (tạo group/user/policy) và budgets:* (tạo budget).
+# Nếu tài khoản không có quyền thì dừng ngay với thông báo rõ ràng, thay vì
+# để lỗi AccessDenied xen giữa quá trình.
+$preflight = Invoke-AwsProbe @("sts", "get-caller-identity")
+if ($preflight.ExitCode -ne 0) {
+  Write-Error "ERROR: Không xác thực được AWS. Kiểm tra `aws configure list-profiles` và profile đang dùng."
+  exit 1
+}
+
+$iamProbe = Invoke-AwsProbe @("iam", "get-group", "--group-name", "linkpulse-devs")
+$iamDenied = $iamProbe.StdErr -match "AccessDenied|not authorized"
+$iamMissing = $iamProbe.StdErr -match "NoSuchEntity|does not exist"
+
+if ($iamDenied -and -not $iamMissing) {
+  Write-Host ""
+  Write-Host "!! KHÔNG ĐỦ QUYỀN — script cần quyền IAM admin (iam:*) và budgets:*." -ForegroundColor Yellow
+  Write-Host "   Caller hiện tại: $(aws sts get-caller-identity --query Arn --output text)" -ForegroundColor Yellow
+  Write-Host "   Lỗi: $($iamProbe.StdErr.Trim())" -ForegroundColor Yellow
+  Write-Host ""
+  Write-Host "   Cách xử lý:" -ForegroundColor Yellow
+  Write-Host "   1) Chạy script này bằng root user hoặc IAM admin của tài khoản 567627324019." -ForegroundColor Yellow
+  Write-Host "   2) Hoặc admin gán cho user hiện tại: iam:CreateUser, iam:CreateGroup, iam:CreatePolicy,"
+  Write-Host "      iam:AttachUserPolicy, iam:AttachGroupPolicy, iam:PutUserPolicy, iam:CreateLoginProfile,"
+  Write-Host "      iam:UpdateAccountPasswordPolicy, budgets:CreateBudget, budgets:UpdateBudget." -ForegroundColor Yellow
+  Write-Host ""
+  exit 1
+}
+
 $tempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "linkpulse-setup-" + [System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
@@ -114,14 +171,18 @@ try {
   $policyReader = "LinkPulse-ReadOnly"
 
   Log-Info "Tạo group $group (nếu chưa có)"
-  $null = aws iam get-group --group-name $group 2>$null
-  if ($LASTEXITCODE -ne 0) {
+  $groupProbe = Invoke-AwsProbe @("iam", "get-group", "--group-name", $group)
+  if ($groupProbe.ExitCode -ne 0 -and $groupProbe.StdErr -notmatch "NoSuchEntity|does not exist") {
+    Write-Error "ERROR: Không đọc được group '$group': $($groupProbe.StdErr.Trim())"
+    exit 1
+  }
+  if ($groupProbe.ExitCode -ne 0) {
     Invoke-Run "aws iam create-group --group-name $group"
   }
 
   $oldPolicyArn = "arn:aws:iam::${accountId}:policy/LinkPulse-DevLeastPrivilege"
-  $null = aws iam get-policy --policy-arn $oldPolicyArn 2>$null
-  if ($LASTEXITCODE -eq 0) {
+  $oldProbe = Invoke-AwsProbe @("iam", "get-policy", "--policy-arn", $oldPolicyArn)
+  if ($oldProbe.ExitCode -eq 0) {
     Log-Info "Gỡ policy cũ LinkPulse-DevLeastPrivilege khỏi group $group"
     Invoke-Run "aws iam detach-group-policy --group-name $group --policy-arn $oldPolicyArn"
   }
@@ -169,8 +230,8 @@ try {
 '@ | Out-File -FilePath $mfaJsonPath -Encoding utf8
 
   $mfaArn = "arn:aws:iam::${accountId}:policy/$policyMfa"
-  $null = aws iam get-policy --policy-arn $mfaArn 2>$null
-  if ($LASTEXITCODE -eq 0) {
+  $mfaProbe = Invoke-AwsProbe @("iam", "get-policy", "--policy-arn", $mfaArn)
+  if ($mfaProbe.ExitCode -eq 0) {
     Invoke-Run "aws iam create-policy-version --policy-arn $mfaArn --policy-document file://$mfaJsonPath --set-as-default"
   } else {
     Invoke-Run "aws iam create-policy --policy-name $policyMfa --policy-document file://$mfaJsonPath --description 'TV5: bat buoc MFA cho moi thanh vien'"
@@ -279,8 +340,8 @@ try {
 "@ | Out-File -FilePath $deployerJsonPath -Encoding utf8
 
   $deployerArn = "arn:aws:iam::${accountId}:policy/$policyDeployer"
-  $null = aws iam get-policy --policy-arn $deployerArn 2>$null
-  if ($LASTEXITCODE -eq 0) {
+  $deployerProbe = Invoke-AwsProbe @("iam", "get-policy", "--policy-arn", $deployerArn)
+  if ($deployerProbe.ExitCode -eq 0) {
     Invoke-Run "aws iam create-policy-version --policy-arn $deployerArn --policy-document file://$deployerJsonPath --set-as-default"
   } else {
     Invoke-Run "aws iam create-policy --policy-name $policyDeployer --policy-document file://$deployerJsonPath --description 'TV5: quyen deploy backend va edge (TV1, TV5)'"
@@ -330,8 +391,8 @@ try {
 '@ | Out-File -FilePath $frontendJsonPath -Encoding utf8
 
   $frontendArn = "arn:aws:iam::${accountId}:policy/$policyFrontend"
-  $null = aws iam get-policy --policy-arn $frontendArn 2>$null
-  if ($LASTEXITCODE -eq 0) {
+  $frontendProbe = Invoke-AwsProbe @("iam", "get-policy", "--policy-arn", $frontendArn)
+  if ($frontendProbe.ExitCode -eq 0) {
     Invoke-Run "aws iam create-policy-version --policy-arn $frontendArn --policy-document file://$frontendJsonPath --set-as-default"
   } else {
     Invoke-Run "aws iam create-policy --policy-name $policyFrontend --policy-document file://$frontendJsonPath --description 'TV5: quyen deploy giao dien (TV2)'"
@@ -371,8 +432,8 @@ try {
 '@ | Out-File -FilePath $readerJsonPath -Encoding utf8
 
   $readerArn = "arn:aws:iam::${accountId}:policy/$policyReader"
-  $null = aws iam get-policy --policy-arn $readerArn 2>$null
-  if ($LASTEXITCODE -eq 0) {
+  $readerProbe = Invoke-AwsProbe @("iam", "get-policy", "--policy-arn", $readerArn)
+  if ($readerProbe.ExitCode -eq 0) {
     Invoke-Run "aws iam create-policy-version --policy-arn $readerArn --policy-document file://$readerJsonPath --set-as-default"
   } else {
     Invoke-Run "aws iam create-policy --policy-name $policyReader --policy-document file://$readerJsonPath --description 'TV5: quyen doc de kiem chung (TV3, TV4)'"
@@ -386,8 +447,8 @@ try {
     $role = $roleMap[$m]
     $user = "linkpulse-$m"
 
-    $null = aws iam get-user --user-name $user 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    $userProbe = Invoke-AwsProbe @("iam", "get-user", "--user-name", $user)
+    if ($userProbe.ExitCode -eq 0) {
       Log-Info "  - $user đã tồn tại, giữ nguyên"
     } else {
       Invoke-Run "aws iam create-user --user-name $user --tags Key=Project,Value=LinkPulse Key=Owner,Value=$m"
@@ -395,6 +456,26 @@ try {
 
     Invoke-Run "aws iam add-user-to-group --user-name $user --group-name $group"
     Invoke-Run "aws iam attach-user-policy --user-name $user --policy-arn $mfaArn"
+
+    # Console access (tuỳ chọn): tạo LoginProfile để thành viên đăng nhập AWS Console.
+    # Mật khẩu phải khớp password policy của tài khoản: >= 14 ký tự, hoa + thường + số + ký hiệu.
+    if ($ConsolePassword) {
+      $loginProbe = Invoke-AwsProbe @("iam", "get-login-profile", "--user-name", $user)
+      if ($loginProbe.ExitCode -eq 0) {
+        Log-Info "  - $user đã có console access, giữ nguyên"
+      } else {
+        # Không nội suy mật khẩu vào chuỗi `Invoke-Run` vì hàm đó dùng
+        # `Invoke-Expression`: mật khẩu chứa ký tự đặc biệt của PowerShell
+        # (nhất là `$` hoặc `#`) sẽ bị diễn giải sai. Gọi aws trực tiếp.
+        if ($DryRun) {
+          Write-Host "[dry-run] aws iam create-login-profile --user-name $user --password <ẩn>" -ForegroundColor Gray
+        } else {
+          aws iam create-login-profile --user-name $user --password $ConsolePassword | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Không tạo được console access cho $user." }
+        }
+        Log-Info "  - ${user}: đã tạo console access (copy mật khẩu '$ConsolePassword' cho thành viên, chỉ hiện 1 lần)"
+      }
+    }
 
     switch ($role) {
       'deployer' {
@@ -465,8 +546,8 @@ try {
   $budgetObj | ConvertTo-Json -Depth 5 | Out-File -FilePath $budgetJsonPath -Encoding utf8
   $notifications | ConvertTo-Json -Depth 5 | Out-File -FilePath $notifsJsonPath -Encoding utf8
 
-  $null = aws budgets describe-budget --account-id $accountId --budget-name $budgetName --region us-east-1 2>$null
-  if ($LASTEXITCODE -eq 0) {
+  $budgetProbe = Invoke-AwsProbe @("budgets", "describe-budget", "--account-id", $accountId, "--budget-name", $budgetName, "--region", "us-east-1")
+  if ($budgetProbe.ExitCode -eq 0) {
     Invoke-Run "aws budgets update-budget --account-id $accountId --new-budget file://$budgetJsonPath --region us-east-1"
   } else {
     Invoke-Run "aws budgets create-budget --account-id $accountId --budget file://$budgetJsonPath --notifications-with-subscribers file://$notifsJsonPath --region us-east-1"

@@ -1,0 +1,18 @@
+{
+    "Items": [
+        {
+            "added_at": {
+                "S": "2026-11-10T07:46:09Z"
+            },
+            "domain": {
+                "S": "example.org"
+            },
+            "reason": {
+                "S": "phishing"
+            }
+        }
+    ],
+    "Count": 1,
+    "ScannedCount": 1,
+    "ConsumedCapacity": null
+}

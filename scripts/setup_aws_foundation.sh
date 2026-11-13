@@ -37,6 +37,11 @@
 #   Vai trò suy ra từ tên: tv1/tv5 -> deployer, tv2 -> frontend, tv3/tv4 -> reader.
 #   Ghi đè tường minh bằng --roles "tv1=deployer,tv5=deployer,tv2=frontend,tv3=reader,tv4=reader".
 #
+#   Cấp cả console access (tuỳ chọn) để thành viên đăng nhập được AWS Console:
+#       ./scripts/setup_aws_foundation.sh --member tv5=liamnguyen.piupear206@gmail.com \
+#           --console-password "LinkPulse-TV5-2026!x"
+#   Mật khẩu phải khớp password policy của tài khoản: >= 14 ký tự, hoa + thường + số + ký hiệu.
+#
 # Yêu cầu: AWS CLI v2, quyền iam:* và budgets:* (chạy lần đầu bằng IAM admin/root).
 # Sau đó mỗi người dùng user của mình, không dùng chung key.
 ###############################################################################
@@ -45,6 +50,7 @@ set -euo pipefail
 REGION="ap-southeast-2"
 EDGE_REGION="us-east-1"
 BUDGET_LIMIT="5"
+CONSOLE_PASSWORD=""
 MEMBERS=""
 EMAILS=""
 ROLES=""
@@ -57,7 +63,7 @@ trap 'rm -rf "$WORKDIR"' EXIT
 usage() {
   sed -n '2,42p' "$0"
   echo "Options: --members a,b --emails a@x,b@x [--member a=mail ...] [--roles a=role,...]"
-  echo "         [--region R] [--edge-region R] [--budget N] [--dry-run]"
+  echo "         [--region R] [--edge-region R] [--budget N] [--console-password P] [--dry-run]"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -69,6 +75,7 @@ while [[ $# -gt 0 ]]; do
     --region)      REGION="$2"; shift 2 ;;
     --edge-region) EDGE_REGION="$2"; shift 2 ;;
     --budget)      BUDGET_LIMIT="$2"; shift 2 ;;
+    --console-password) CONSOLE_PASSWORD="$2"; shift 2 ;;
     --dry-run)     DRY_RUN="true"; shift ;;
     -h|--help)     usage; exit 0 ;;
     *) echo "Unknown arg: $1"; usage; exit 1 ;;
@@ -124,6 +131,25 @@ log() { echo "==> $*"; }
 command -v aws >/dev/null || { echo "ERROR: chưa cài AWS CLI"; exit 1; }
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 log "Account: $ACCOUNT_ID | Region workload: $REGION | Region edge: $EDGE_REGION | Budget: \$$BUDGET_LIMIT/mo"
+
+# Preflight: script cần iam:* (tạo group/user/policy) và budgets:* (tạo budget).
+# Nếu tài khoản không có quyền thì dừng ngay với thông báo rõ ràng, thay vì để lỗi
+# AccessDenied xen giữa quá trình.
+IAM_PROBE_ERR="$(aws iam get-group --group-name linkpulse-devs 2>&1 >/dev/null || true)"
+if grep -qE "AccessDenied|not authorized" <<<"$IAM_PROBE_ERR" && ! grep -qE "NoSuchEntity|does not exist" <<<"$IAM_PROBE_ERR"; then
+  echo ""
+  echo "!! KHÔNG ĐỦ QUYỀN — script cần quyền IAM admin (iam:*) và budgets:*." >&2
+  echo "   Caller hiện tại: $(aws sts get-caller-identity --query Arn --output text)" >&2
+  echo "   Lỗi: $IAM_PROBE_ERR" >&2
+  echo ""
+  echo "   Cách xử lý:" >&2
+  echo "   1) Chạy script này bằng root user hoặc IAM admin của tài khoản 567627324019." >&2
+  echo "   2) Hoặc admin gán cho user hiện tại: iam:CreateUser, iam:CreateGroup, iam:CreatePolicy," >&2
+  echo "      iam:AttachUserPolicy, iam:AttachGroupPolicy, iam:PutUserPolicy, iam:CreateLoginProfile," >&2
+  echo "      iam:UpdateAccountPasswordPolicy, budgets:CreateBudget, budgets:UpdateBudget." >&2
+  echo ""
+  exit 1
+fi
 
 # Tên stack của nhóm: TV1 dùng smart-url cho stack backend, các stack khác dùng linkpulse-*.
 
@@ -407,6 +433,23 @@ for i in "${!MEMBER_ARR[@]}"; do
   fi
   run "aws iam add-user-to-group --user-name $user --group-name $GROUP"
   run "aws iam attach-user-policy --user-name $user --policy-arn $MFA_ARN"
+
+  # Console access (tuỳ chọn): tạo LoginProfile để thành viên đăng nhập AWS Console.
+  # Mật khẩu phải khớp password policy của tài khoản: >= 14 ký tự, hoa + thường + số + ký hiệu.
+  if [[ -n "$CONSOLE_PASSWORD" ]]; then
+    if aws iam get-login-profile --user-name "$user" >/dev/null 2>&1; then
+      log "  - $user đã có console access, giữ nguyên"
+    else
+      # Không nội suy mật khẩu vào chuỗi `run` vì `run` dùng `eval`: mật khẩu chứa
+      # ký tự shell (nhất là `'` hoặc `$`) sẽ bị diễn giải sai. Gọi aws trực tiếp.
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "[dry-run] aws iam create-login-profile --user-name $user --password <ẩn>"
+      else
+        aws iam create-login-profile --user-name "$user" --password "$CONSOLE_PASSWORD"
+      fi
+      log "  - $user: đã tạo console access (chuyển mật khẩu '$CONSOLE_PASSWORD' cho thành viên, chỉ hiện 1 lần)"
+    fi
+  fi
   case "$role" in
     deployer)
       run "aws iam attach-user-policy --user-name $user --policy-arn $POWERUSER_ARN"

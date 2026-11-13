@@ -1,0 +1,35 @@
+Link bi gac co suspicious (code TV4 gui) - bang urls
+Command: scripts/dyn_urls.sh get 0R4b1nm
+
+# bảng urls: linkpulse-backend-UrlsTable-B250YK6MDY97 (region ap-southeast-2)
+{
+    "Item": {
+        "click_count": {
+            "N": "113"
+        },
+        "created_at": {
+            "S": "2026-11-09T14:19:14Z"
+        },
+        "expires_at": {
+            "S": "2026-11-16T14:19:14Z"
+        },
+        "flag_reason": {
+            "S": "bot_traffic"
+        },
+        "flagged_at": {
+            "N": "1794234453"
+        },
+        "long_url": {
+            "S": "https://example.com/tv4-flag"
+        },
+        "owner_id": {
+            "S": "969b778c-deb4-4c0a-88bc-4bdad1f6bda7"
+        },
+        "short_code": {
+            "S": "0R4b1nm"
+        },
+        "status": {
+            "S": "suspicious"
+        }
+    }
+}

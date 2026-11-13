@@ -57,7 +57,7 @@ Tài liệu chi tiết: [`docs/architecture.md`](docs/architecture.md), [`docs/t
 | `infra/edge.yaml` | Stack biên: CloudFront, S3 giao diện, WAF (bật/tắt bằng tham số) |
 | `frontend/` | Giao diện tĩnh, script nạp lên S3 |
 | `database/` | Script tạo bảng DynamoDB và tài liệu schema |
-| `scripts/` | Script vận hành: kiểm tra tài khoản, IAM nền tảng, quản lý blocklist |
+| `scripts/` | Script vận hành: kiểm tra tài khoản, IAM nền tảng, quản lý blocklist, kiểm thử rate limit |
 | `terraform/` | AWS Budget |
 | `docs/` | Tài liệu kiến trúc, bảo mật, quyết định chung của nhóm |
 | `tests/` | Test dùng chung (pytest + moto) |
@@ -195,6 +195,34 @@ Trên Windows:
 
 Xem trước thay đổi mà không thực thi: thêm `--dry-run` (bash) hoặc `-DryRun` (PowerShell).
 
+**Cấp console access (tuỳ chọn):** user IAM tạo bằng script mặc định **không** đăng nhập được AWS
+Console (chỉ dùng Access Key qua CLI). Muốn thành viên vào console thì thêm tuỳ chọn console access:
+
+```bash
+./scripts/setup_aws_foundation.sh \
+  --member tv5=liamnguyen.piupear206@gmail.com \
+  --console-password "LinkPulse-TV5-2026!x"
+```
+
+```powershell
+.\scripts\setup_aws_foundation.ps1 `
+  -Member @("tv5=liamnguyen.piupear206@gmail.com") `
+  -ConsolePassword "LinkPulse-TV5-2026!x"
+```
+
+Mật khẩu phải khớp password policy của tài khoản: **≥ 14 ký tự, có chữ hoa + chữ thường + số + ký hiệu**.
+Lệnh này tạo `LoginProfile` (chỉ hiện mật khẩu 1 lần) và **bỏ qua** user đã có console access.
+Đăng nhập console bằng: Account `567627324019` → chọn **IAM user** → username `linkpulse-tv5` → mật khẩu đã cấp.
+
+> ⚠️ Root user của tài khoản đã đăng nhập được console; user `linkpulse-tv5` thì chưa (thiếu `LoginProfile`).
+> Không dùng root cho việc thường — root bắt buộc MFA và không thuộc phạm vi phân quyền của nhóm.
+
+> ℹ️ **Script cần quyền IAM admin.** Cả hai bản đều có bước preflight: nếu user đang chạy không có
+> `iam:*` / `budgets:*`, script **dừng ngay** với thông báo rõ ràng (thay vì lỗi `AccessDenied`
+> xen giữa quá trình) và liệt kê đúng các action cần cấp. Chạy script bằng **root user** hoặc
+> IAM admin của tài khoản `567627324019`.
+> Bằng chứng chạy thật: [`docs/security_test_week2.md`](docs/security_test_week2.md) mục 0.4.
+
 Bảng ánh xạ:
 
 | Thành viên | Module | Email | IAM user | Vai trò |
@@ -240,6 +268,12 @@ Gửi cho mỗi người một tin nhắn, mẫu:
 > 4. Kiểm tra email budget đã về hộp thư của bạn chưa (kiểm tra cả Spam)
 
 Mỗi người tự bật MFA và tự tạo key của mình — không chia sẻ key.
+
+Nếu admin đã chạy script với `--console-password`, thêm dòng này vào tin nhắn để thành viên đăng nhập
+console (ngoài MFA + access key ở trên):
+
+> 5. Đăng nhập AWS Console: Account `567627324019` → chọn **IAM user** → username `linkpulse-tv<N>` →
+>    mật khẩu đã cấp. Bắt buộc nhập mã MFA từ app Authenticator.
 
 ### Bước 1 — Deploy backend (lần 1)
 
@@ -329,6 +363,38 @@ Mặc định script chỉ in lệnh để xem trước. Thêm `--execute` (bash
 chạy thật. Tên bảng được tra tự động từ output của stack backend; đặt `BLOCKLIST_TABLE` và
 `URLS_TABLE` nếu cần chỉ định tay.
 
+## Kiểm thử lớp chống lạm dụng
+
+| Script | Công dụng |
+|---|---|
+| `scripts/test_ratelimit.sh` | Gửi 15 POST `/api/shorten` liên tiếp, in mã trả về + header `Retry-After`, tự xoá link test. Kỳ vọng: 10 request đầu `201`, từ request 11 là `429`. |
+| `scripts/test_throttling.py` | Gửi N request song song (thread + `Barrier`) để vượt ngưỡng 10 rps của API Gateway, phân loại 2 lớp `429`, tự xoá link test. |
+| `scripts/dyn_urls.sh` | Truy vấn nhanh bảng `urls` (trạng thái link, `flag_reason`). |
+| `scripts/render_evidence.py` | Dựng ảnh PNG từ output kiểm thử để dán vào tài liệu. |
+
+```bash
+# Lớp rate limit theo IP (10 lần/phút)
+bash scripts/test_ratelimit.sh
+
+# Lớp throttling của API Gateway (10 rps, burst 20)
+python scripts/test_throttling.py --par 120 --conc 60
+```
+
+Trên Windows, chạy script Python với `PYTHONUTF8=1` và `PYTHONIOENCODING=utf-8` để không lỗi
+`UnicodeEncodeError` khi in tiếng Việt. Kết quả và ảnh bằng chứng ghi ở
+[`docs/security_test_week2.md`](docs/security_test_week2.md).
+
+### Ảnh bằng chứng trên AWS Console
+
+Một số bằng chứng cần ảnh chụp từ AWS Console (IAM user `linkpulse-tv5` không có `LoginProfile`
+nên **không** đăng nhập được console — dùng root user hoặc cấp `Console access` cho user):
+
+| Bằng chứng | Đường dẫn console | File ảnh |
+|---|---|---|
+| Chi phí $0 | Billing and Cost Management → Cost Explorer | `docs/screenshots/aws/lan3/09-cost-explorer-console.png` |
+
+Các ảnh còn lại (`01`–`08`) dựng từ output thật của AWS CLI bằng `scripts/render_evidence.py`.
+
 ## Phân công
 
 | Module | Phạm vi | Hạ tầng do module quản lý |
@@ -372,3 +438,9 @@ Quyết định chung của nhóm (Region, thứ tự deploy, ngưỡng chống 
 
 CloudFront và WAF luôn nằm ở `us-east-1` (N. Virginia) — đó là lý do stack edge deploy riêng ở
 Region đó. Metric của Lambda/DynamoDB thì ở `ap-southeast-2`.
+
+> **Thực tế đã deploy (2026-11-04):** SCP của tổ chức chặn `us-east-1` cho user của nhóm, nên stack
+> `linkpulse-edge` đã deploy ở `ap-southeast-2` cùng Region với backend. Vì `EnableWaf=false` và
+> không dùng domain riêng thì edge không bắt buộc ở `us-east-1`; chỉ khi bật WAF phạm vi
+> `CLOUDFRONT` hoặc dùng certificate ACM riêng thì mới cần quay lại `us-east-1`.
+> Chi tiết: [`docs/security_test_week2.md`](docs/security_test_week2.md) mục 0.

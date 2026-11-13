@@ -1,0 +1,34 @@
+﻿AWS Cost Explorer - LinkPulse (account 567627324019)
+Command: aws ce get-cost-and-usage --time-period Start=2026-10-01,End=2026-11-11 --granularity MONTHLY --metrics UnblendedCost --group-by Type=DIMENSION,Key=SERVICE
+
+Ky tu 2026-10-01 -> 2026-11-01
+Dich vu                             UnblendedCost Unit
+AWS CloudFormation                              0 USD
+AWS CloudShell                                  0 USD
+AWS Glue                                        0 USD
+AWS Key Management Service                      0 USD
+AWS Lambda                                      0 USD
+AWS Secrets Manager                             0 USD
+Amazon API Gateway                              0 USD
+Amazon Simple Notification Service              0 USD
+Amazon Simple Queue Service                     0 USD
+Amazon Simple Storage Service       -0.0000000006 USD
+AmazonCloudWatch                                0 USD
+Tax                                             0 USD
+
+Ky tu 2026-11-01 -> 2026-11-11
+Dich vu                             UnblendedCost Unit
+AWS CloudFormation                              0 USD
+AWS CloudShell                       0.0000015082 USD
+AWS Data Transfer                   -0.0000015082 USD
+AWS Glue                                        0 USD
+AWS Key Management Service                      0 USD
+AWS Lambda                                      0 USD
+Amazon API Gateway                              0 USD
+Amazon CloudFront                   -0.0000000011 USD
+Amazon DynamoDB                                 0 USD
+Amazon Simple Queue Service                     0 USD
+Amazon Simple Storage Service       -0.0000000004 USD
+AmazonCloudWatch                                0 USD
+Tax                                             0 USD
+
