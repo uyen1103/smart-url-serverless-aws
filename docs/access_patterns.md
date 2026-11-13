@@ -97,3 +97,6 @@ Trong `analytics.py`:
 - DynamoDB Streams có cơ chế xử lý ít nhất một lần (at-least-once). Vì vậy, cần lưu ý khả năng xử lý trùng sự kiện khi cập nhật thống kê.
 - Bảng `stats` có giới hạn kích thước tối đa 400 KB cho mỗi item. Việc lưu nhiều tập hợp IP hoặc bộ đếm theo chiều có thể làm item tăng kích thước đáng kể.
 - Rate limit sử dụng cửa sổ thời gian cố định và cập nhật bộ đếm nguyên tử bằng DynamoDB. Khi DynamoDB bị throttle, cơ chế này fail-open; AWS WAF và API Gateway throttling vẫn là các lớp bảo vệ bổ sung.
+- TTL của bảng `stats` được áp dụng cho các bản ghi thống kê theo phút thông qua thuộc tính `expires_at`, với thời hạn mặc định 8 ngày.
+- Các item metadata `META/recent_clicks` và `META/flagged_links` không được thiết lập `expires_at` trong các thao tác ghi hiện tại, do đó không tự hết hạn theo TTL.
+- `purge_link_data(code)` chỉ xóa dữ liệu click trong bảng `clicks` và dữ liệu thống kê thuộc scope `LINK#<code>`. Các bộ đếm `l:<code>` trong scope `GLOBAL` không bị xóa trực tiếp và sẽ hết hạn theo TTL của bản ghi thống kê tương ứng.

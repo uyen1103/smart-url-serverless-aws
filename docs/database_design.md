@@ -83,7 +83,7 @@ IP thật không được lưu trực tiếp; hệ thống sử dụng `ip_hash`
 | `r:<referrer>` | Bộ đếm theo nguồn giới thiệu |
 | `l:<code>` | Bộ đếm theo mã URL, chỉ áp dụng cho scope GLOBAL |
 | `ips` | Tập hợp các `ip_hash` |
-| `items` | Danh sách các lượt click gần đây phục vụ dashboard |
+| `items` | Danh sách các lượt click gần đây, được lưu trong item metadata `META/recent_clicks` để phục vụ dashboard |
 | `expires_at` | Thời điểm dữ liệu hết hạn |
 
 **Quy ước dữ liệu:**
@@ -99,7 +99,8 @@ Các bộ đếm được cập nhật bằng thao tác `ADD` nguyên tử của
 **Cấu hình:**
 
 - TTL: bật trên thuộc tính `expires_at`.
-- Thời gian lưu dữ liệu theo cấu hình hiện tại: 8 ngày.
+- Thời gian lưu các bản ghi thống kê theo phút: mặc định 8 ngày.
+- Các item metadata `META/recent_clicks` và `META/flagged_links` không được thiết lập `expires_at` trong các thao tác ghi hiện tại, do đó không tự hết hạn theo TTL.
 
 ### 2.4. Bảng `rate_limits`
 
@@ -186,10 +187,12 @@ TTL được bật trên các bảng:
 | Bảng | Thuộc tính TTL | Thời gian lưu theo cấu hình |
 |---|---|---|
 | `clicks` | `expires_at` | 30 ngày |
-| `stats` | `expires_at` | 8 ngày |
+| `stats` | `expires_at` | 8 ngày đối với bản ghi thống kê theo phút |
 | `rate_limits` | `expires_at` | Theo bucket thời gian |
 
 DynamoDB sử dụng thuộc tính `expires_at` để xác định các item hết hạn và xóa chúng tự động. Việc xóa không nhất thiết diễn ra ngay tại thời điểm hết hạn.
+
+**Lưu ý:** Các item metadata `META/recent_clicks` và `META/flagged_links` trong bảng `stats` không có `expires_at` trong các thao tác ghi hiện tại nên không tự hết hạn theo TTL.
 
 ### 3.4. DynamoDB Streams
 
@@ -225,3 +228,4 @@ Cấu hình PITR áp dụng cho bảng `urls` theo điều kiện trong CloudFor
 - DynamoDB Streams có cơ chế xử lý at-least-once, do đó khi sự kiện được retry, số liệu tổng hợp có thể bị đếm dư.
 - Một item DynamoDB không được vượt quá 400 KB. Tập `ips` hoặc các bộ đếm referrer có thể tăng kích thước lớn khi lưu lượng cao.
 - Khi hệ thống đạt lưu lượng rất lớn, có thể cân nhắc HyperLogLog hoặc Kinesis kết hợp Flink để xử lý thống kê ở quy mô cao hơn.
+- Khi xóa một URL, hệ thống xóa dữ liệu click thuộc bảng `clicks` và dữ liệu thống kê thuộc scope `LINK#<code>`. Các bộ đếm `l:<code>` trong scope `GLOBAL` không bị xóa trực tiếp và chỉ hết hạn theo TTL của bản ghi thống kê tương ứng.
